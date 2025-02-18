@@ -53,17 +53,10 @@ export default class BibleCitationPlugin extends Plugin {
 		
 		
 		let citationGetter = new BibleCitationGetter();
-		let citationPath = "KJV/by_chapter/01_Genesis/Chapter_01.md ";
-
-		
-		const file = this.app.vault.getAbstractFileByPath(citationPath);
-		if (file && file instanceof TFile) {
-			this.app.vault.read(file).then((data) => {})
-		} else {
-			new Notice("Citation file not found.");
-		}
-		
-
+		let citationPath = "/KJV/by_chapter/01_Genesis/Chapter_01.md";
+		this.app.vault.adapter.read(citationPath).then((content) => {
+			console.log(content);
+		});
 		const divContent = `<div class="bible-citation">
             <div class="tabs">
                 <button class="tab-button">S</button>
