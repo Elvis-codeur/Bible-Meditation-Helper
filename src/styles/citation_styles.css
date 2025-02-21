@@ -1,0 +1,55 @@
+.bible-citation {
+    background-color: #f4f4f8; /* Light grayish-blue background */
+    padding: 15px;
+    border-radius: 8px; 
+    box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1); /* Soft shadow */
+    max-width: 600px;
+    margin: 20px auto;
+}
+
+.bible-citation > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap; /* Prevents overflow */
+}
+
+.scripture_quoted {
+    font-weight: bold;
+    font-size: 18px;
+    color: #2c3e50; /* Darker text */
+}
+
+.bible_version_section_div {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Space between label and dropdown */
+}
+
+#select_bible_version_dropdown {
+    padding: 5px 10px;
+    font-size: 14px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    background-color: white;
+    cursor: pointer;
+}
+
+/* Style the verses list */
+.citation-content {
+    margin-top: 10px;
+    padding: 10px;
+    background: white;
+    border-radius: 5px;
+}
+
+/* Style each verse */
+.citation-content div {
+    padding: 5px 0;
+}
+
+.citation-content p {
+    margin: 0;
+    font-size: 16px;
+    color: #333;
+}
