@@ -1,8 +1,9 @@
-import { App, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
+import { App, MarkdownPostProcessor, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
 
 
 import axios from 'axios';
 import BibleCitationGetter from "./bible_citation_getter";
+import path from "path";
 
 
 
@@ -24,17 +25,40 @@ export default class BibleCitationPlugin extends Plugin {
 				},
 			],
 		});
+
+		this.registerMarkdownCodeBlockProcessor("html", (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
+			console.log("Elvis est un enfant de Dieu")
+			const myDropdown = el.querySelector("#select_bible_version_dropdown") as HTMLSelectElement;
+
+			if (myDropdown) {
+				myDropdown.addEventListener("change", function () {
+					console.log("Selected Bible Version:", myDropdown.value);
+				});
+			}
+		});
+
+		this.loadStyles();
 	}
 
-	async createBibleCitation() {
-        const citation = await this.getCitationFromUser();
-        if (!citation) return;
+	async loadStyles() {
+		const cssFile = await this.app.vault.adapter.read(path.join(this.app.vault.configDir,
+			 "plugins", "Bible-Meditation-Helper",'src/styles/citation_styles.css'));
+		const style = document.createElement('style');
+		style.textContent = cssFile;
+		document.head.appendChild(style);
+	}
 
-        this.addCitationDiv(citation);
-        new Notice(`Added citation: ${citation}`);
-    }	/* Add this CSS to style the bible citation div and tabs */
 	
-	
+
+	async createBibleCitation() {
+		const citation = await this.getCitationFromUser();
+		if (!citation) return;
+
+		this.addCitationDiv(citation);
+		new Notice(`Added citation: ${citation}`);
+	}	/* Add this CSS to style the bible citation div and tabs */
+
+
 	async addCitationDiv(citation: string) {
 		const activeLeaf = this.app.workspace.activeLeaf;
 		if (!activeLeaf) {
@@ -50,20 +74,10 @@ export default class BibleCitationPlugin extends Plugin {
 
 		const editor = (view as any).editor;
 		const cursor = editor.getCursor();
-		
-		
-		let citationGetter = new BibleCitationGetter();
-		let citationPath = "/KJV/by_chapter/01_Genesis/Chapter_01.md";
-		this.app.vault.adapter.read(citationPath).then((content) => {
-			console.log(content);
-		});
-		const divContent = `<div class="bible-citation">
-            <div class="tabs">
-                <button class="tab-button">S</button>
-                <button class="tab-button">J</button>
-            </div>
-            <div class="citation-content">${citation}</div>
-        </div>`;
+
+
+		let divContent = await new BibleCitationGetter({ vault: this.app.vault }).getCitation(citation);
+
 
 		editor.replaceRange(divContent, cursor);
 	}
