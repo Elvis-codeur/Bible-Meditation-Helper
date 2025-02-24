@@ -1,0 +1,23 @@
+/* Style for the custom Bible callout */
+.callout[data-callout="bible"] {
+    background-color: #f8f8f8; /* Light gray background */
+    border-left: 5px solid #4A90E2; /* Blue left border */
+    padding: 10px;
+    border-radius: 5px;
+}
+
+/* Customize the title bar of the callout */
+.callout[data-callout="bible"] .callout-title {
+    background-color: #4A90E2; /* Blue background */
+    color: white; /* White text */
+    font-weight: bold;
+    font-size: 1.2em;
+    padding: 5px 10px;
+    border-radius: 5px 5px 0 0;
+}
+
+/* Customize the icon in the callout (if any) */
+.callout[data-callout="bible"] .callout-icon {
+    color: #fff;
+    font-size: 1.2em;
+}

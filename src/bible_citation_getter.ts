@@ -1,6 +1,9 @@
 import e from "express";
 import { promises as fsPromises } from "fs";
 import { version } from "os";
+import { plugin_callout } from "./constants";
+import { map } from "cheerio/dist/commonjs/api/traversing";
+import { Notice, TFile } from "obsidian";
 
 const path = require("path");
 
@@ -12,16 +15,22 @@ function isInteger(str: string) {
 
 export default class BibleCitationGetter {
     vault: any;
+    app:any;
+    constructor({ app }: { app: any; }) {
+        this.app = app;;
 
-    constructor({ vault }: { vault: any; }) {
-        this.vault = vault;
+        this.vault = app.vault;
 
     }
-    async getCitation(text: string): Promise<string> {
+    async getCitation(text: string): Promise<{ citation: string, result: any }> {
+
+        let bible_version = text.split("||")[1];
+
+    
 
         // Parse the citation
         // Remove all sapce to facilitate parsing 
-        let citation = text.replace(" ", "").toLowerCase().replace("\n", "").replace("\r", "").split(":");
+        let citation = text.split("||")[0].replace(" ", "").toLowerCase().replace("\n", "").replace("\r", "").split(":");
         let book_and_chapter = citation[0];
 
         let book = "";
@@ -50,14 +59,13 @@ export default class BibleCitationGetter {
 
         // Read the chapter containing the citation
 
-        let chapter_content = this.readCitationOnDrive(book.replace(" ", ""), parseInt(chapter),
+        let result = await this.readCitationOnDrive(book.replace(" ", ""), parseInt(chapter),
             parseInt(verse_indice_inf),
-            parseInt(verse_indice_sup), "KJV");
-
+            parseInt(verse_indice_sup), bible_version);
 
 
         // Create the citation and put it in a div 
-        let content_lines = (await chapter_content).split("\n");
+        let content_lines = (await result.result).split("\n");
 
 
         let citation_indice_begin = parseInt(verse_indice_inf);
@@ -66,7 +74,7 @@ export default class BibleCitationGetter {
         console.log("Citation begin: " + citation_indice_begin);
         console.log("Citation end: " + citation_indice_end);
 
-        //console.log("Content lines: " + content_lines);
+        console.log("Bible version: " + bible_version);
 
         let verses_list = [];
 
@@ -94,38 +102,76 @@ export default class BibleCitationGetter {
 
 
 
+        const divContent = `>${plugin_callout} [${this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end)}]\n` 
+                        +  verses_list.map((value) => {
+            return `>**${value.number}** ${value.text}\n`
+        }).join("");
 
+        // const divContent = `<div class="bible-citation">
 
-
-
-        const divContent = `<div class="bible-citation">
-
-            <div>
+        //     <div>
             
-            <div class = "scripture_quoted" >${this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end)} </div>
+        //     <div class = "scripture_quoted" >${this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end)} </div>
             
-            <div class="bible_version_section_div">
-                <label for="myDropdown">Choose an option:</label>
-				<select id="select_bible_version_dropdown">
-					<option value="option1">ESV</option>
-					<option value="option2">KJV</option>
-					<option value="option3">LSG10</option>
-				</select>
+        //     <div class="bible_version_section_div">
+        //         <label for="myDropdown">Choose an option:</label>
+		// 		<select id="select_bible_version_dropdown">
+		// 			<option value="option1">ESV</option>
+		// 			<option value="option2">KJV</option>
+		// 			<option value="option3">LSG10</option>
+		// 		</select>
 
-            </div>
+        //     </div>
 
-            </div>
+        //     </div>
 
-            <div class="citation-content">${verses_list.map((value) => {
-            return `<div><p> <b> ${value.number} </b> ${value.text} </p></div>`
-        }).join("")}</div>
-        </div>`;
+        //     <div class="citation-content">${verses_list.map((value) => {
+        //     return `<div><p> <b> ${value.number} </b> ${value.text} </p></div>`
+        // }).join("")}</div>
+        // </div>`;
 
 
-        return divContent;
+        return {citation:divContent,result:result};
 
 
     }
+
+
+        async createFileForCitation(book:string, chapter:string, verse_indice_inf:number,verse_indice_sup:number, version:string): Promise<string | null> {
+    
+            const fileName = `${book} ${chapter}:${verse_indice_inf}-${verse_indice_sup}.md`;
+    
+            const file = await this.createFile(fileName, "");
+    
+            if (file) {
+                const link = this.generateLink(file);
+                this.vault.app.workspace.activeLeaf?.setViewState({
+                    type: 'markdown',
+                    state: { file: file.path },
+                });
+                new Notice(`Created file with citation: ${book} ${chapter}:${verse_indice_inf}-${verse_indice_sup}`);
+                return link;
+            }
+            return null;
+        }
+    
+        
+    
+        async createFile(fileName: string, content: string): Promise<TFile | null> {
+            try {
+                const file = await this.app.vault.create(fileName, content);
+                return file;
+            } catch (error) {
+                console.error("Failed to create file:", error);
+                new Notice("Failed to create file.");
+                return null;
+            }
+        }
+    
+        generateLink(file: TFile): string {
+            return `[[${file.path}]]`;
+        }
+    
     prepare_book_and_chapter_for_citation(book_and_chapter:string,
         verse_indice_inf:number,
         verse_indice_sup:number) {
@@ -134,23 +180,23 @@ export default class BibleCitationGetter {
         let result = "";
         if (isInteger(book_and_chapter.charAt(0)) ) {
             result = book_and_chapter.charAt(0) + " " +
-                book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
+                book_and_chapter.charAt(1).toUpperCase() +this.mapbookToBookNameInFolder(book_and_chapter.slice(2));
         }
         else if (book_and_chapter.charAt(0) == "i")
         {
             if (book_and_chapter.slice(0,2) == "ii")
             {
                 result = book_and_chapter.slice(0,2).toUpperCase() + " " +
-                book_and_chapter.charAt(2).toUpperCase() + book_and_chapter.slice(3);
+                book_and_chapter.charAt(2).toUpperCase() + this.mapbookToBookNameInFolder(book_and_chapter.slice(3));
             }
             else if (book_and_chapter.slice(0,3) == "iii")
             {
                 result = book_and_chapter.slice(0,3).toUpperCase() + " " +
-                book_and_chapter.charAt(3).toUpperCase() + book_and_chapter.slice(4);
+                book_and_chapter.charAt(3).toUpperCase() + this.mapbookToBookNameInFolder(book_and_chapter.slice(4));
             }
             else {
                 result = book_and_chapter.charAt(0).toUpperCase() + " " +
-                book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
+                book_and_chapter.charAt(1).toUpperCase() + this.mapbookToBookNameInFolder(book_and_chapter.slice(2));
             }
 
         }
@@ -166,7 +212,7 @@ export default class BibleCitationGetter {
             }
         }   
 
-        return `${book} ${chapter} : ${verse_indice_sup} - ${verse_indice_inf}`;
+        return `${book} ${chapter} : ${verse_indice_inf} - ${verse_indice_sup}`;
     }
 
     convert_number_to_string(number: number): string {
@@ -180,7 +226,7 @@ export default class BibleCitationGetter {
 
     // Method to get a citation by book, chapter, and verse
     async readCitationOnDrive(book: string, chapter: number, verse_indice_inf: number,
-        verse_indice_sup: number, bible_version: string): Promise<string> {
+        verse_indice_sup: number, bible_version: string) {
 
 
         let language: string = this.mapBibleVersionToLanguage(bible_version);
@@ -200,7 +246,9 @@ export default class BibleCitationGetter {
 
         //console.log("Result: " + result);
 
-        return result
+        return {"result": result, language: language.toLocaleLowerCase(),
+             bible_version: bible_version.toUpperCase(),chapter: chapterName,
+              book: book,verse_indice_inf:verse_indice_inf,verse_indice_sup:verse_indice_sup};
     }
 
     mapbookToBookNameInFolder(book: string): string {
@@ -479,6 +527,7 @@ export default class BibleCitationGetter {
 
 
     mapBibleVersionToLanguage(bible_version: string): string {
+        console.log("Bible version: == == == " + bible_version);
         const language: { [key: string]: string } = {
             "ESV": "en",
             "NIV": "en",
@@ -506,11 +555,12 @@ export default class BibleCitationGetter {
             "ARA": "pt",
             "NVI-PT": "pt",
             "LSG": "fr",
+            "LSG10": "fr",
             "NEG": "fr",
             "PDV": "fr",
             "BDS": "fr"
         };
-        return language[bible_version.toUpperCase() as keyof typeof language] || "None";
+        return language[bible_version.toUpperCase().trim() as keyof typeof language] || "None";
 
     }
 
