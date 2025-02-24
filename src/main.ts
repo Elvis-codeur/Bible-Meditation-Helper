@@ -1,4 +1,4 @@
-import { App, MarkdownPostProcessor, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
+import { App, ButtonComponent, MarkdownPostProcessor, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
 
 
 import axios from 'axios';
@@ -42,8 +42,8 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async loadStyles() {
 		const cssFile = await this.app.vault.adapter.read(path.join(this.app.vault.configDir,
-			 "plugins", "Bible-Meditation-Helper",'src/styles/citation_styles.css'));
-		const style = document.createElement('style');
+			 "plugins", "Bible-Meditation-Helper",'src/styles/citation_callout_style.css'));
+		const style = document.createElement('citation_callout_style');
 		style.textContent = cssFile;
 		document.head.appendChild(style);
 	}
@@ -75,53 +75,15 @@ export default class BibleCitationPlugin extends Plugin {
 		const editor = (view as any).editor;
 		const cursor = editor.getCursor();
 
-
-		let divContent = await new BibleCitationGetter({ vault: this.app.vault }).getCitation(citation);
-
-
-		editor.replaceRange(divContent, cursor);
-	}
-
-
-	async createFileForCitation() {
-		const citation = await this.getCitationFromUser();
-		if (!citation) return;
-
-		const fileName = `${citation}.md`;
-		const fileContent = `# ${citation}\n\nYour meditation content here...`;
-
-		const file = await this.createFile(fileName, fileContent);
-		if (file) {
-			const link = this.generateLink(file);
-			this.app.workspace.activeLeaf?.setViewState({
-				type: 'markdown',
-				state: { file: file.path },
-			});
-			new Notice(`Created file with citation: ${citation}`);
+		let got_citation: { citation: string } = await new BibleCitationGetter({app: this.app }).getCitation(citation);
+		if (!got_citation) {
+			new Notice("Failed to get citation.");
+			return;
 		}
+
+		editor.replaceRange(got_citation.citation, cursor);
 	}
 
-	async getCitationFromUser(): Promise<string | null> {
-		return new Promise((resolve) => {
-			const prompt = new PromptModal(this.app, resolve);
-			prompt.open();
-		});
-	}
-
-	async createFile(fileName: string, content: string): Promise<TFile | null> {
-		try {
-			const file = await this.app.vault.create(fileName, content);
-			return file;
-		} catch (error) {
-			console.error("Failed to create file:", error);
-			new Notice("Failed to create file.");
-			return null;
-		}
-	}
-
-	generateLink(file: TFile): string {
-		return `[[${file.path}]]`;
-	}
 }
 
 class PromptModal extends Modal {
@@ -135,17 +97,50 @@ class PromptModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: "Enter Bible Citation" });
-
 		const inputEl = contentEl.createEl("input", { type: "text" });
 		inputEl.focus();
 
+		const selectEl = contentEl.createEl("select");
+		const versions = ["ESV", "KJV", "LSG10", "BDS"];
+		versions.forEach(version => {
+			const optionEl = selectEl.createEl("option", { text: version });
+			optionEl.value = version;
+			selectEl.appendChild(optionEl);
+		});
+
+
 		const submitButton = contentEl.createEl("button", { text: "Submit" });
+
+
+
+		inputEl.addEventListener("keypress", (event) => {
+			if (event.key === "Enter") {
+				submitButton.click();
+			}
+		});
+
+
 		submitButton.onclick = () => {
-			const citation = inputEl.value.trim();
+			const citation = inputEl.value.trim() + "||" + selectEl.value.trim();
 			this.resolve(citation || null);
 			this.close();
 		};
+
+		// Add the element as children 
+		
+		contentEl.appendChild(inputEl);
+		contentEl.appendChild(selectEl);
+		contentEl.appendChild(submitButton);
+
 	}
+
+	async getCitationFromUser(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const prompt = new PromptModal(this.app, resolve);
+			prompt.open();
+		});
+	}
+
 
 	onClose() {
 		const { contentEl } = this;
