@@ -1,7 +1,7 @@
 import e from "express";
 import { promises as fsPromises } from "fs";
 import { version } from "os";
-import { plugin_callout } from "./constants";
+import { pluginCallout,defaultCitationFolder } from "./constants";
 import { map } from "cheerio/dist/commonjs/api/traversing";
 import { Notice, TFile } from "obsidian";
 
@@ -100,9 +100,14 @@ export default class BibleCitationGetter {
 
         }
 
+        // The name of the citation file without its extension
+        const citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end);
 
+        const citationFileName = citationFileNameWithoutExt + ".md";
 
-        const divContent = `>${plugin_callout} [${this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end)}]\n` 
+        const file = await this.createFileInSubfolder(defaultCitationFolder, citationFileName);
+
+        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt}]]\n` 
                         +  verses_list.map((value) => {
             return `>**${value.number}** ${value.text}\n`
         }).join("");
@@ -168,9 +173,14 @@ export default class BibleCitationGetter {
             }
         }
     
-        generateLink(file: TFile): string {
+        getFilePath(file: TFile): string {
             return `[[${file.path}]]`;
         }
+        generateLink(file: TFile): string {
+            return `[[${file.path.split('/').pop()?.replace(/\.md$/, "")}]]`;
+        }
+
+        
     
     prepare_book_and_chapter_for_citation(book_and_chapter:string,
         verse_indice_inf:number,
@@ -180,23 +190,27 @@ export default class BibleCitationGetter {
         let result = "";
         if (isInteger(book_and_chapter.charAt(0)) ) {
             result = book_and_chapter.charAt(0) + " " +
-                book_and_chapter.charAt(1).toUpperCase() +this.mapbookToBookNameInFolder(book_and_chapter.slice(2));
+                book_and_chapter.charAt(1).toUpperCase() +book_and_chapter.slice(2);
         }
-        else if (book_and_chapter.charAt(0) == "i")
+        else 
         {
-            if (book_and_chapter.slice(0,2) == "ii")
+            if (book_and_chapter.charAt(0) == "i") {
+                result = book_and_chapter.charAt(0).toUpperCase() + " " +
+                book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
+            
+            }
+            else if (book_and_chapter.slice(0,2) == "ii")
             {
                 result = book_and_chapter.slice(0,2).toUpperCase() + " " +
-                book_and_chapter.charAt(2).toUpperCase() + this.mapbookToBookNameInFolder(book_and_chapter.slice(3));
+                book_and_chapter.charAt(2).toUpperCase() + book_and_chapter.slice(3);
             }
             else if (book_and_chapter.slice(0,3) == "iii")
             {
                 result = book_and_chapter.slice(0,3).toUpperCase() + " " +
-                book_and_chapter.charAt(3).toUpperCase() + this.mapbookToBookNameInFolder(book_and_chapter.slice(4));
+                book_and_chapter.charAt(3).toUpperCase() + book_and_chapter.slice(4);
             }
             else {
-                result = book_and_chapter.charAt(0).toUpperCase() + " " +
-                book_and_chapter.charAt(1).toUpperCase() + this.mapbookToBookNameInFolder(book_and_chapter.slice(2));
+                result = book_and_chapter.charAt(0).toUpperCase() + book_and_chapter.slice(1);
             }
 
         }
@@ -212,7 +226,8 @@ export default class BibleCitationGetter {
             }
         }   
 
-        return `${book} ${chapter} : ${verse_indice_inf} - ${verse_indice_sup}`;
+
+        return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}-${verse_indice_sup}`;
     }
 
     convert_number_to_string(number: number): string {
@@ -251,6 +266,41 @@ export default class BibleCitationGetter {
               book: book,verse_indice_inf:verse_indice_inf,verse_indice_sup:verse_indice_sup};
     }
 
+    // Helper function to remove invalid filename characters
+    sanitizeFileName(fileName: string): string 
+    {
+        return fileName.replace(/[\/*?"<>|]/g, "").replace(":","*"); // Remove forbidden characters
+    }
+
+    async createFileInSubfolder(folderPath: string, fileName: string, content: string = "") {
+        const vault = this.app.vault;
+    
+        // Ensure the folder exists, create it if it doesn’t
+        const folder = vault.getAbstractFileByPath(folderPath);
+        if (!folder) {
+            await vault.createFolder(folderPath);
+            console.log(`Folder created: ${folderPath}`);
+        }
+    
+        // Sanitize the file name
+        const safeFileName = this.sanitizeFileName(fileName);
+        const filePath = `${folderPath}/${safeFileName}`;
+        
+        const file = vault.getAbstractFileByPath(filePath);
+        // Check if the file exists before creating
+        if (!file) {
+            const file = await vault.create(filePath, content);
+            return file;
+        } else {
+            return file;
+        }
+    }
+
+    
+    
+    
+
+    
     mapbookToBookNameInFolder(book: string): string {
 
         //console.log("Book given : " + book);
