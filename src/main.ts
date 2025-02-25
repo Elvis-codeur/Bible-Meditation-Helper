@@ -1,5 +1,6 @@
-import { App, ButtonComponent, MarkdownPostProcessor, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
+import { App, ButtonComponent, FileView, MarkdownPostProcessor, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
 
+import { processMarkdownFile } from "./table_of_citations";
 
 import axios from 'axios';
 import BibleCitationGetter from "./bible_citation_getter";
@@ -82,6 +83,20 @@ export default class BibleCitationPlugin extends Plugin {
 		}
 
 		editor.replaceRange(got_citation.citation, cursor);
+
+		// if (view)
+		// {
+		// 	const file = (view as FileView).file;
+		// 	if (file) {
+		// 		processMarkdownFile(file.path, this.app.vault);
+		// 		new Notice("Success in process markdown file");
+
+		// 	} else {
+		// 		new Notice("Failed to process markdown file: file is null.");
+		// 	}
+
+		// }
+
 	}
 
 
