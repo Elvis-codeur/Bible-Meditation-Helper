@@ -75,7 +75,7 @@ export default class BibleCitationPlugin extends Plugin {
 		const editor = (view as any).editor;
 		const cursor = editor.getCursor();
 
-		let got_citation: { citation: string } = await new BibleCitationGetter({app: this.app }).getCitation(citation);
+		let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(citation);
 		if (!got_citation) {
 			new Notice("Failed to get citation.");
 			return;
@@ -84,6 +84,48 @@ export default class BibleCitationPlugin extends Plugin {
 		editor.replaceRange(got_citation.citation, cursor);
 	}
 
+
+	async createFileForCitation(book:string, chapter:string, verse_indice_inf:number,verse_indice_sup:number, version:string): Promise<string | null> {
+		const citation = await this.getCitationFromUser();
+		if (!citation) return null;
+
+		const fileName = `${book} ${chapter}:${verse_indice_inf}-${verse_indice_sup}.md`;
+
+		const file = await this.createFile(fileName, "");
+
+		if (file) {
+			const link = this.generateLink(file);
+			this.app.workspace.activeLeaf?.setViewState({
+				type: 'markdown',
+				state: { file: file.path },
+			});
+			new Notice(`Created file with citation: ${citation}`);
+			return link;
+		}
+		return null;
+	}
+
+	async getCitationFromUser(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const prompt = new PromptModal(this.app, resolve);
+			prompt.open();
+		});
+	}
+
+	async createFile(fileName: string, content: string): Promise<TFile | null> {
+		try {
+			const file = await this.app.vault.create(fileName, content);
+			return file;
+		} catch (error) {
+			console.error("Failed to create file:", error);
+			new Notice("Failed to create file.");
+			return null;
+		}
+	}
+
+	generateLink(file: TFile): string {
+		return `[[${file.path}]]`;
+	}
 }
 
 class PromptModal extends Modal {
@@ -134,12 +176,7 @@ class PromptModal extends Modal {
 
 	}
 
-	async getCitationFromUser(): Promise<string | null> {
-		return new Promise((resolve) => {
-			const prompt = new PromptModal(this.app, resolve);
-			prompt.open();
-		});
-	}
+	
 
 
 	onClose() {
