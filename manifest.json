@@ -3,8 +3,8 @@
 	"name": "Bible Meditation Helper",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
+	"description": "A plugin to help meditate the bible in any language",
+	"author": "AGBALENYO Komi Barthélémy Elvis",
 	"authorUrl": "https://github.com/Elvis-codeur/Bible-Meditation-Helper",
 	"fundingUrl": "https://github.com/Elvis-codeur/Bible-Meditation-Helper",
 	"isDesktopOnly": false
