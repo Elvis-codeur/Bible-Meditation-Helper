@@ -1,8 +1,4 @@
-import e from "express";
-import { promises as fsPromises } from "fs";
-import { version } from "os";
 import { pluginCallout,defaultCitationFolder } from "./constants";
-import { map } from "cheerio/dist/commonjs/api/traversing";
 import { Notice, TFile } from "obsidian";
 
 const path = require("path");
@@ -107,7 +103,7 @@ export default class BibleCitationGetter {
 
         const file = await this.createFileInSubfolder(defaultCitationFolder, citationFileName);
 
-        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt}]]\n` 
+        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt + ' | ' + bible_version.trim().toUpperCase()}]]\n` 
                         +  verses_list.map((value) => {
             return `>**${value.number}** ${value.text}\n`
         }).join("");
