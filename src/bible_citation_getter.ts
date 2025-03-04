@@ -250,6 +250,10 @@ export default class BibleCitationGetter {
         if (chapter < 10) {
             chapterString = "0" + chapter;
         }
+        else  {
+            chapterString = chapter.toString();
+        }
+        
 
         let chapterName = `Chapter_${chapterString}.md`;
 
