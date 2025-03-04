@@ -249,7 +249,7 @@ export default class BibleCitationGetter {
         else  {
             chapterString = chapter.toString();
         }
-        
+
 
         let chapterName = `Chapter_${chapterString}.md`;
 
