@@ -87,7 +87,7 @@ export default class BibleCitationGetter {
                 citation_indice_end = chapter_verses.length;
             }
             else {
-                citation_indice_end = citation_indice_begin +1;
+                citation_indice_end = citation_indice_begin;
             }
         }
         else {
@@ -113,7 +113,7 @@ export default class BibleCitationGetter {
                 // Take the number of the verse at the begening of the verse 
                 verse_number = parseInt(line.slice(0, line.indexOf(".")));
 
-                if (verse_number >= citation_indice_begin && verse_number < citation_indice_end) {
+                if (verse_number >= citation_indice_begin && verse_number <= citation_indice_end) {
                     verses_list.push(
                         {
                             number: verse_number,
@@ -253,8 +253,15 @@ export default class BibleCitationGetter {
             }
         }
 
+        // Cas de citation d'un seul verset
+        if(verse_indice_inf  == verse_indice_sup)
+        {
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}`;
+        }
+        else {
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}-${verse_indice_sup}`;
+        }
 
-        return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}-${verse_indice_sup}`;
     }
 
     convert_number_to_string(number: number): string {
@@ -324,6 +331,7 @@ export default class BibleCitationGetter {
             const file = await vault.create(filePath, content);
             return file;
         } else {
+            //console.log("citation file exists")
             return file;
         }
     }
