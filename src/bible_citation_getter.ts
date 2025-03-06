@@ -18,6 +18,16 @@ export default class BibleCitationGetter {
         this.vault = app.vault;
 
     }
+
+     splitTextByNumberedPattern(text: string): string[] {
+        return text.split(/(?=\b\d+\.\s)/g);
+    }
+    
+   
+    
+    
+   
+    
     async getCitation(text: string): Promise<{ citation: string, result: any }> {
 
         let bible_version = text.split("||")[1];
@@ -61,11 +71,16 @@ export default class BibleCitationGetter {
 
 
         // Create the citation and put it in a div 
-        let content_lines = (await result.result).split("\n");
+        let chapter_verses = (await result.result).split("\n");
+
+        // To remove the chapter definition line 
+        chapter_verses = chapter_verses.slice(1)
+
+        chapter_verses = this.splitTextByNumberedPattern(chapter_verses.join("\n"));
 
 
         let citation_indice_begin = parseInt(verse_indice_inf);
-        let citation_indice_end = verse_indice_sup != "" ? parseInt(verse_indice_sup) : content_lines.length;
+        let citation_indice_end = verse_indice_sup != "" ? parseInt(verse_indice_sup) : chapter_verses.length;
 
         console.log("Citation begin: " + citation_indice_begin);
         console.log("Citation end: " + citation_indice_end);
@@ -74,13 +89,15 @@ export default class BibleCitationGetter {
 
         let verses_list = [];
 
+        console.log(chapter_verses);
 
 
-        for (let compteur = 0; compteur < content_lines.length; compteur++) {
-            let line = content_lines[compteur];
+        for (let compteur = 0; compteur < chapter_verses.length; compteur++) {
+            let line = chapter_verses[compteur];
 
             let verse_number = 0;
             if (line.contains(".")) {
+                // Take the number of the verse at the begening of the verse 
                 verse_number = parseInt(line.slice(0, line.indexOf(".")));
 
                 if (verse_number >= citation_indice_begin && verse_number <= citation_indice_end) {
@@ -95,6 +112,10 @@ export default class BibleCitationGetter {
             }
 
         }
+
+         
+        //const verses = this.splitVersesFromMarkdown(markdownText);
+        //console.log(verses);
 
         // The name of the citation file without its extension
         const citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end);
