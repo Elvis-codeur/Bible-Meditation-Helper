@@ -1,8 +1,5 @@
-import { App, ButtonComponent, FileView, MarkdownPostProcessor, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
+import { App,MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
 
-import { processMarkdownFile } from "./table_of_citations";
-
-import axios from 'axios';
 import BibleCitationGetter from "./bible_citation_getter";
 import path from "path";
 
@@ -43,7 +40,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async loadStyles() {
 		const cssFile = await this.app.vault.adapter.read(path.join(this.app.vault.configDir,
-			 "plugins", "Bible-Meditation-Helper",'src/styles/citation_callout_style.css'));
+			 "plugins", "Bible-Meditation-Helper",'styles/citation_callout_style.css'));
 		const style = document.createElement('citation_callout_style');
 		style.textContent = cssFile;
 		document.head.appendChild(style);

@@ -1,0 +1,12 @@
+# Mark everything to be ignored by default
+* export-ignore
+
+# Explicitly include only the files and folders you want
+data/* !export-ignore
+styles/* !export-ignore
+config/* !export-ignore
+LICENSE !export-ignore
+README.md !export-ignore
+main.js !export-ignore
+manifest.json !export-ignore
+versions.js !export-ignore
