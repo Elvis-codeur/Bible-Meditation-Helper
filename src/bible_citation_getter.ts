@@ -1,4 +1,4 @@
-import { pluginCallout,defaultCitationFolder } from "./constants";
+import { pluginCallout, defaultCitationFolder } from "./constants";
 import { Notice, TFile } from "obsidian";
 
 const path = require("path");
@@ -11,18 +11,28 @@ function isInteger(str: string) {
 
 export default class BibleCitationGetter {
     vault: any;
-    app:any;
+    app: any;
     constructor({ app }: { app: any; }) {
         this.app = app;;
 
         this.vault = app.vault;
 
     }
+
+    splitTextByNumberedPattern(text: string): string[] {
+        return text.split(/(?=\b\d+\.\s)/g);
+    }
+
+
+
+
+
+
     async getCitation(text: string): Promise<{ citation: string, result: any }> {
 
         let bible_version = text.split("||")[1];
 
-    
+
 
         // Parse the citation
         // Remove all sapce to facilitate parsing 
@@ -61,11 +71,29 @@ export default class BibleCitationGetter {
 
 
         // Create the citation and put it in a div 
-        let content_lines = (await result.result).split("\n");
+        let chapter_verses = (await result.result).split("\n");
+
+        // To remove the chapter definition line 
+        chapter_verses = chapter_verses.slice(1)
+
+        chapter_verses = this.splitTextByNumberedPattern(chapter_verses.join("\n"));
 
 
         let citation_indice_begin = parseInt(verse_indice_inf);
-        let citation_indice_end = verse_indice_sup != "" ? parseInt(verse_indice_sup) : content_lines.length;
+        let citation_indice_end = 0;
+
+        if (verse_indice_sup == "") {
+            if (book_and_chapter.endsWith("-")) {
+                citation_indice_end = chapter_verses.length;
+            }
+            else {
+                citation_indice_end = citation_indice_begin;
+            }
+        }
+        else {
+            citation_indice_end = parseInt(verse_indice_sup);
+
+        }
 
         console.log("Citation begin: " + citation_indice_begin);
         console.log("Citation end: " + citation_indice_end);
@@ -74,13 +102,15 @@ export default class BibleCitationGetter {
 
         let verses_list = [];
 
+        console.log(chapter_verses);
 
 
-        for (let compteur = 0; compteur < content_lines.length; compteur++) {
-            let line = content_lines[compteur];
+        for (let compteur = 0; compteur < chapter_verses.length; compteur++) {
+            let line = chapter_verses[compteur];
 
             let verse_number = 0;
             if (line.contains(".")) {
+                // Take the number of the verse at the begening of the verse 
                 verse_number = parseInt(line.slice(0, line.indexOf(".")));
 
                 if (verse_number >= citation_indice_begin && verse_number <= citation_indice_end) {
@@ -96,31 +126,35 @@ export default class BibleCitationGetter {
 
         }
 
+
+        //const verses = this.splitVersesFromMarkdown(markdownText);
+        //console.log(verses);
+
         // The name of the citation file without its extension
-        const citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end);
+        const citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, citation_indice_begin, citation_indice_end);
 
         const citationFileName = citationFileNameWithoutExt + ".md";
 
         const file = await this.createFileInSubfolder(defaultCitationFolder, citationFileName);
 
-        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt + ' | ' + bible_version.trim().toUpperCase()}]]\n` 
-                        +  verses_list.map((value) => {
-            return `>**${value.number}** ${value.text}\n`
-        }).join("");
+        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt + ' | ' + bible_version.trim().toUpperCase()}]]\n`
+            + verses_list.map((value) => {
+                return `>**${value.number}** ${value.text}\n`
+            }).join("");
 
         // const divContent = `<div class="bible-citation">
 
         //     <div>
-            
+
         //     <div class = "scripture_quoted" >${this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end)} </div>
-            
+
         //     <div class="bible_version_section_div">
         //         <label for="myDropdown">Choose an option:</label>
-		// 		<select id="select_bible_version_dropdown">
-		// 			<option value="option1">ESV</option>
-		// 			<option value="option2">KJV</option>
-		// 			<option value="option3">LSG10</option>
-		// 		</select>
+        // 		<select id="select_bible_version_dropdown">
+        // 			<option value="option1">ESV</option>
+        // 			<option value="option2">KJV</option>
+        // 			<option value="option3">LSG10</option>
+        // 		</select>
 
         //     </div>
 
@@ -132,78 +166,75 @@ export default class BibleCitationGetter {
         // </div>`;
 
 
-        return {citation:divContent,result:result};
+        return { citation: divContent, result: result };
 
 
     }
 
 
-        async createFileForCitation(book:string, chapter:string, verse_indice_inf:number,verse_indice_sup:number, version:string): Promise<string | null> {
-    
-            const fileName = `${book} ${chapter}:${verse_indice_inf}-${verse_indice_sup}.md`;
-    
-            const file = await this.createFile(fileName, "");
-    
-            if (file) {
-                const link = this.generateLink(file);
-                this.vault.app.workspace.activeLeaf?.setViewState({
-                    type: 'markdown',
-                    state: { file: file.path },
-                });
-                new Notice(`Created file with citation: ${book} ${chapter}:${verse_indice_inf}-${verse_indice_sup}`);
-                return link;
-            }
+    async createFileForCitation(book: string, chapter: string, verse_indice_inf: number, verse_indice_sup: number, version: string): Promise<string | null> {
+
+        const fileName = `${book} ${chapter}:${verse_indice_inf}-${verse_indice_sup}.md`;
+
+        const file = await this.createFile(fileName, "");
+
+        if (file) {
+            const link = this.generateLink(file);
+            this.vault.app.workspace.activeLeaf?.setViewState({
+                type: 'markdown',
+                state: { file: file.path },
+            });
+            new Notice(`Created file with citation: ${book} ${chapter}:${verse_indice_inf}-${verse_indice_sup}`);
+            return link;
+        }
+        return null;
+    }
+
+
+
+    async createFile(fileName: string, content: string): Promise<TFile | null> {
+        try {
+            const file = await this.app.vault.create(fileName, content);
+            return file;
+        } catch (error) {
+            console.error("Failed to create file:", error);
+            new Notice("Failed to create file.");
             return null;
         }
-    
-        
-    
-        async createFile(fileName: string, content: string): Promise<TFile | null> {
-            try {
-                const file = await this.app.vault.create(fileName, content);
-                return file;
-            } catch (error) {
-                console.error("Failed to create file:", error);
-                new Notice("Failed to create file.");
-                return null;
-            }
-        }
-    
-        getFilePath(file: TFile): string {
-            return `[[${file.path}]]`;
-        }
-        generateLink(file: TFile): string {
-            return `[[${file.path.split('/').pop()?.replace(/\.md$/, "")}]]`;
-        }
+    }
 
-        
-    
-    prepare_book_and_chapter_for_citation(book_and_chapter:string,
-        verse_indice_inf:number,
-        verse_indice_sup:number) {
+    getFilePath(file: TFile): string {
+        return `[[${file.path}]]`;
+    }
+    generateLink(file: TFile): string {
+        return `[[${file.path.split('/').pop()?.replace(/\.md$/, "")}]]`;
+    }
+
+
+
+    prepare_book_and_chapter_for_citation(book_and_chapter: string,
+        verse_indice_inf: number,
+        verse_indice_sup: number) {
 
         // Prepare the name of the book 
         let result = "";
-        if (isInteger(book_and_chapter.charAt(0)) ) {
+        if (isInteger(book_and_chapter.charAt(0))) {
             result = book_and_chapter.charAt(0) + " " +
-                book_and_chapter.charAt(1).toUpperCase() +book_and_chapter.slice(2);
+                book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
         }
-        else 
-        {
+        else {
             if (book_and_chapter.charAt(0) == "i") {
                 result = book_and_chapter.charAt(0).toUpperCase() + " " +
-                book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
-            
+                    book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
+
             }
-            else if (book_and_chapter.slice(0,2) == "ii")
-            {
-                result = book_and_chapter.slice(0,2).toUpperCase() + " " +
-                book_and_chapter.charAt(2).toUpperCase() + book_and_chapter.slice(3);
+            else if (book_and_chapter.slice(0, 2) == "ii") {
+                result = book_and_chapter.slice(0, 2).toUpperCase() + " " +
+                    book_and_chapter.charAt(2).toUpperCase() + book_and_chapter.slice(3);
             }
-            else if (book_and_chapter.slice(0,3) == "iii")
-            {
-                result = book_and_chapter.slice(0,3).toUpperCase() + " " +
-                book_and_chapter.charAt(3).toUpperCase() + book_and_chapter.slice(4);
+            else if (book_and_chapter.slice(0, 3) == "iii") {
+                result = book_and_chapter.slice(0, 3).toUpperCase() + " " +
+                    book_and_chapter.charAt(3).toUpperCase() + book_and_chapter.slice(4);
             }
             else {
                 result = book_and_chapter.charAt(0).toUpperCase() + book_and_chapter.slice(1);
@@ -220,10 +251,17 @@ export default class BibleCitationGetter {
                 chapter = book_and_chapter.substring(i, book_and_chapter.length);
                 break
             }
-        }   
+        }
 
+        // Cas de citation d'un seul verset
+        if(verse_indice_inf  == verse_indice_sup)
+        {
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}`;
+        }
+        else {
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}-${verse_indice_sup}`;
+        }
 
-        return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}-${verse_indice_sup}`;
     }
 
     convert_number_to_string(number: number): string {
@@ -246,10 +284,10 @@ export default class BibleCitationGetter {
         if (chapter < 10) {
             chapterString = "0" + chapter;
         }
-        else  {
+        else {
             chapterString = chapter.toString();
         }
-        
+
 
         let chapterName = `Chapter_${chapterString}.md`;
 
@@ -261,46 +299,48 @@ export default class BibleCitationGetter {
 
         //console.log("Result: " + result);
 
-        return {"result": result, language: language.toLocaleLowerCase(),
-             bible_version: bible_version.toUpperCase(),chapter: chapterName,
-              book: book,verse_indice_inf:verse_indice_inf,verse_indice_sup:verse_indice_sup};
+        return {
+            "result": result, language: language.toLocaleLowerCase(),
+            bible_version: bible_version.toUpperCase(), chapter: chapterName,
+            book: book, verse_indice_inf: verse_indice_inf, verse_indice_sup: verse_indice_sup
+        };
     }
 
     // Helper function to remove invalid filename characters
-    sanitizeFileName(fileName: string): string 
-    {
-        return fileName.replace(/[\/*?"<>|]/g, "").replace(":","*"); // Remove forbidden characters
+    sanitizeFileName(fileName: string): string {
+        return fileName.replace(/[\/*?"<>|]/g, "").replace(":", "*"); // Remove forbidden characters
     }
 
     async createFileInSubfolder(folderPath: string, fileName: string, content: string = "") {
         const vault = this.app.vault;
-    
+
         // Ensure the folder exists, create it if it doesn’t
         const folder = vault.getAbstractFileByPath(folderPath);
         if (!folder) {
             await vault.createFolder(folderPath);
             console.log(`Folder created: ${folderPath}`);
         }
-    
+
         // Sanitize the file name
         const safeFileName = this.sanitizeFileName(fileName);
         const filePath = `${folderPath}/${safeFileName}`;
-        
+
         const file = vault.getAbstractFileByPath(filePath);
         // Check if the file exists before creating
         if (!file) {
             const file = await vault.create(filePath, content);
             return file;
         } else {
+            //console.log("citation file exists")
             return file;
         }
     }
 
-    
-    
-    
 
-    
+
+
+
+
     mapbookToBookNameInFolder(book: string): string {
 
         //console.log("Book given : " + book);
