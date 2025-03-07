@@ -139,8 +139,8 @@ export default class BibleCitationGetter {
 
         const file = await this.createFileInSubfolder(defaultCitationFolder, citationFileName);
 
-        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt + ' | ' + bible_version.trim().toUpperCase()}]]\n`
-            + verses_list.map((value) => {
+        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt.replace("_"," ") + ' | ' + bible_version.trim().toUpperCase()}]]\n`
+             + verses_list.map((value) => {
                 return `>**${value.number}** ${value.text}\n`
             }).join("");
 
