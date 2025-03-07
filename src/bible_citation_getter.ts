@@ -82,8 +82,10 @@ export default class BibleCitationGetter {
         let citation_indice_begin = parseInt(verse_indice_inf);
         let citation_indice_end = 0;
 
+        console.log(book_and_chapter);
+
         if (verse_indice_sup == "") {
-            if (book_and_chapter.endsWith("-")) {
+            if (citation[1].trim().at(-1) == "-") {
                 citation_indice_end = chapter_verses.length;
             }
             else {
