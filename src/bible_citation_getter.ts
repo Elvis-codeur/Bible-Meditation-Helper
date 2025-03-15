@@ -437,7 +437,7 @@ export default class BibleCitationGetter {
             "iiijohn": "III_John",
 
             "jude": "Jude",
-            "rev": "Revelation",
+            "rev": "Revelation_of_John",
 
             "genèse": "Genesis",
             "exode": "Exodus",
@@ -527,7 +527,7 @@ export default class BibleCitationGetter {
             "3jean": "III_John",
             "iiijean": "III_John",
 
-            "apocalypse": "Revelation",
+            "apocalypse": "Revelation_of_John",
 
 
             "genesis": "Genesis",
@@ -610,8 +610,8 @@ export default class BibleCitationGetter {
             "ipeter": "I_Peter",
             "2peter": "II_Peter",
             "iipeter": "II_Peter",
-
-            "revelation": "Revelation"
+           
+            "revelation": "Revelation_of_John"
 
         };
         return abbreviations[book.replace(" ", "").trim()] || "Unknown";
@@ -725,7 +725,7 @@ export default class BibleCitationGetter {
             "II_John": 62,
             "III_John": 63,
             "Jude": 64,
-            "Revelation": 65
+            "Revelation_of_John": 65
         };
 
         let chapterString = "";
