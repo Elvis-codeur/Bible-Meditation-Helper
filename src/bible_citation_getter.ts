@@ -82,8 +82,10 @@ export default class BibleCitationGetter {
         let citation_indice_begin = parseInt(verse_indice_inf);
         let citation_indice_end = 0;
 
+        console.log(book_and_chapter);
+
         if (verse_indice_sup == "") {
-            if (book_and_chapter.endsWith("-")) {
+            if (citation[1].trim().at(-1) == "-") {
                 citation_indice_end = chapter_verses.length;
             }
             else {
@@ -131,14 +133,19 @@ export default class BibleCitationGetter {
         //console.log(verses);
 
         // The name of the citation file without its extension
-        const citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, citation_indice_begin, citation_indice_end);
+        let citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, citation_indice_begin, citation_indice_end);
+
+        if(citationFileNameWithoutExt.toLowerCase().contains("revelation_of_john"))
+        {
+            citationFileNameWithoutExt = citationFileNameWithoutExt.replace("Revelation_of_John","Revelation")
+        }
 
         const citationFileName = citationFileNameWithoutExt + ".md";
 
         const file = await this.createFileInSubfolder(defaultCitationFolder, citationFileName);
 
-        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt + ' | ' + bible_version.trim().toUpperCase()}]]\n`
-            + verses_list.map((value) => {
+        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt.replace("_"," ") + ' | ' + bible_version.trim().toUpperCase()}]]\n`
+             + verses_list.map((value) => {
                 return `>**${value.number}** ${value.text}\n`
             }).join("");
 
@@ -256,10 +263,10 @@ export default class BibleCitationGetter {
         // Cas de citation d'un seul verset
         if(verse_indice_inf  == verse_indice_sup)
         {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}`;
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter}_${verse_indice_inf}`;
         }
         else {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}-${verse_indice_sup}`;
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter}_${verse_indice_inf}-${verse_indice_sup}`;
         }
 
     }
@@ -308,7 +315,7 @@ export default class BibleCitationGetter {
 
     // Helper function to remove invalid filename characters
     sanitizeFileName(fileName: string): string {
-        return fileName.replace(/[\/*?"<>|]/g, "").replace(":", "*"); // Remove forbidden characters
+        return fileName.replace(/[\/*?"<>|]/g, "")
     }
 
     async createFileInSubfolder(folderPath: string, fileName: string, content: string = "") {
@@ -435,7 +442,7 @@ export default class BibleCitationGetter {
             "iiijohn": "III_John",
 
             "jude": "Jude",
-            "rev": "Revelation",
+            "rev": "Revelation_of_John",
 
             "genèse": "Genesis",
             "exode": "Exodus",
@@ -525,7 +532,7 @@ export default class BibleCitationGetter {
             "3jean": "III_John",
             "iiijean": "III_John",
 
-            "apocalypse": "Revelation",
+            "apocalypse": "Revelation_of_John",
 
 
             "genesis": "Genesis",
@@ -608,8 +615,8 @@ export default class BibleCitationGetter {
             "ipeter": "I_Peter",
             "2peter": "II_Peter",
             "iipeter": "II_Peter",
-
-            "revelation": "Revelation"
+           
+            "revelation": "Revelation_of_John"
 
         };
         return abbreviations[book.replace(" ", "").trim()] || "Unknown";
@@ -723,7 +730,7 @@ export default class BibleCitationGetter {
             "II_John": 62,
             "III_John": 63,
             "Jude": 64,
-            "Revelation": 65
+            "Revelation_of_John": 65
         };
 
         let chapterString = "";
