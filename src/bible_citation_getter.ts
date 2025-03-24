@@ -133,7 +133,12 @@ export default class BibleCitationGetter {
         //console.log(verses);
 
         // The name of the citation file without its extension
-        const citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, citation_indice_begin, citation_indice_end);
+        let citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, citation_indice_begin, citation_indice_end);
+
+        if(citationFileNameWithoutExt.toLowerCase().contains("revelation_of_john"))
+        {
+            citationFileNameWithoutExt = citationFileNameWithoutExt.replace("Revelation_of_John","Revelation")
+        }
 
         const citationFileName = citationFileNameWithoutExt + ".md";
 
@@ -258,10 +263,10 @@ export default class BibleCitationGetter {
         // Cas de citation d'un seul verset
         if(verse_indice_inf  == verse_indice_sup)
         {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}`;
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter}_${verse_indice_inf}`;
         }
         else {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter} : ${verse_indice_inf}-${verse_indice_sup}`;
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter}_${verse_indice_inf}-${verse_indice_sup}`;
         }
 
     }
@@ -310,7 +315,7 @@ export default class BibleCitationGetter {
 
     // Helper function to remove invalid filename characters
     sanitizeFileName(fileName: string): string {
-        return fileName.replace(/[\/*?"<>|]/g, "").replace(":", "*"); // Remove forbidden characters
+        return fileName.replace(/[\/*?"<>|]/g, "")
     }
 
     async createFileInSubfolder(folderPath: string, fileName: string, content: string = "") {
