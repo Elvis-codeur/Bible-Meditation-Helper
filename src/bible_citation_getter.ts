@@ -263,10 +263,10 @@ export default class BibleCitationGetter {
         // Cas de citation d'un seul verset
         if(verse_indice_inf  == verse_indice_sup)
         {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter}_${verse_indice_inf}`;
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter}:${verse_indice_inf}`;
         }
         else {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter}_${verse_indice_inf}-${verse_indice_sup}`;
+            return `${this.mapbookToBookNameInFolder(book)} ${chapter}:${verse_indice_inf}-${verse_indice_sup}`;
         }
 
     }
@@ -315,7 +315,7 @@ export default class BibleCitationGetter {
 
     // Helper function to remove invalid filename characters
     sanitizeFileName(fileName: string): string {
-        return fileName.replace(/[\/*?"<>|]/g, "")
+        return fileName.replace(/[\/*?"<>|]/g, "").replace(":","_")
     }
 
     async createFileInSubfolder(folderPath: string, fileName: string, content: string = "") {
