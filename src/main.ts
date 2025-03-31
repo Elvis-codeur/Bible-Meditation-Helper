@@ -1,7 +1,8 @@
-import { App,MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
+import { App, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
 
 import BibleCitationGetter from "./bible_citation_getter";
 import path from "path";
+import { BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
 
 
 
@@ -12,6 +13,8 @@ const cheerio = require('cheerio');
 
 export default class BibleCitationPlugin extends Plugin {
 	async onload() {
+
+		// Bible citations adding command 
 		this.addCommand({
 			id: 'create-bible-citation',
 			name: 'Create Bible Citation',
@@ -23,6 +26,24 @@ export default class BibleCitationPlugin extends Plugin {
 				},
 			],
 		});
+
+		// Turn the citations in the file to another version command 
+
+		this.addCommand(
+			{
+				id: "change-bible-citation-version",
+				name: "Change the version of the citations in the document",
+				callback: () => this.changeBibleCitationVersion(),
+				hotkeys: [
+					{
+						modifiers: ["Mod"], // "Mod" is a placeholder for Ctrl on Windows/Linux and Cmd on macOS
+						key: "l", // You can change this to any key you prefer
+					},
+				],
+			}
+		)
+
+
 
 		this.registerMarkdownCodeBlockProcessor("html", (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 			console.log("Elvis est un enfant de Dieu")
@@ -40,13 +61,126 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async loadStyles() {
 		const cssFile = await this.app.vault.adapter.read(path.join(this.app.vault.configDir,
-			 "plugins", "Bible-Meditation-Helper",'styles/citation_callout_style.css'));
+			"plugins", "Bible-Meditation-Helper", 'styles/citation_callout_style.css'));
 		const style = document.createElement('citation_callout_style');
 		style.textContent = cssFile;
 		document.head.appendChild(style);
 	}
 
+
+
+	async getCitationFromUser(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const prompt = new BibleCitationPromptModal(this.app, resolve);
+			prompt.open();
+		});
+	}
+
+	extractBibleVersion(citation: string): string | null {
+		// Regex to match the Bible version at the end of the citation block
+		const versionRegex = /\|\s*([A-Z]+)\s*\]\]/;
+		const match = citation.match(versionRegex);
+
+		// If a match is found, return the version, otherwise return null
+		return match ? match[1] : null;
+	}
+
+	 
 	
+async changebibleCitationInTheDocument(content:string,newBibleCitationVersion:string) {
+		// Find all [!bible] blocks using a regex
+		const bibleBlockRegex = /\[!bible-meditation-helper-citation\](.*?)\n([\s\S]*?)\n/g;
+		const matches = [...content.matchAll(bibleBlockRegex)];
+
+		if (matches.length === 0) {
+			new Notice("No Bible citations found in the document.");
+			return;
+		}
+
+		// Replace the version in each [!bible] block
+		let result: [string, string][] = [];
+
+		matches.forEach(async match => {
+			const fullBlock = match[0];
+			let citationLine = fullBlock.split("\n")[0]
+			const oldBibleCitationVersion = this.extractBibleVersion(fullBlock) || "";
+
+			// Replace the old citation with a new one 
+			citationLine = citationLine.replace(oldBibleCitationVersion, newBibleCitationVersion.trim())
+
+			//console.log("New citation line =  ", citationLine);
+
+			// Get the citation to create new citation with the new bible version 
+
+			let citation = citationLine.split("[[")[1].split("|")[1];
+
+
+			let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(
+				citation + "||" + newBibleCitationVersion);
+
+			result.push([fullBlock,got_citation.citation])
+
+
+			
+		});
+		return result;
+
+	}
+
+
+
+	async changeBibleCitationVersion() {
+		const activeLeaf = this.app.workspace.activeLeaf;
+		if (!activeLeaf) {
+			new Notice("No active document found.");
+			return;
+		}
+
+		const view = activeLeaf.view;
+		if (view.getViewType() !== 'markdown') {
+			new Notice("Active document is not a markdown file.");
+			return;
+		}
+
+		const editor = (view as any).editor;
+		const content = editor.getValue();
+		let updatedContent =  content; 
+		
+
+		// Prompt the user to select a new version
+		const newBibleCitationVersion = await this.getBibleVersionFromUser();
+
+
+		if (!newBibleCitationVersion) {
+			new Notice("No version selected.");
+			return;
+		}
+
+		let old_citation_and_new_citation  = await this.changebibleCitationInTheDocument(content,newBibleCitationVersion);
+		
+
+		old_citation_and_new_citation?.map((value)=>{
+			updatedContent = updatedContent.replace(value[0],value[1]);
+		})
+
+
+		console.log(updatedContent);
+		// Update the editor content
+		editor.setValue(updatedContent);
+
+
+		new Notice(`Bible citations updated to version: ${newBibleCitationVersion}`);
+	}
+
+	async getBibleVersionFromUser(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve);
+			prompt.open();
+		});
+
+	}
+
+
 
 	async createBibleCitation() {
 		const citation = await this.getCitationFromUser();
@@ -97,7 +231,7 @@ export default class BibleCitationPlugin extends Plugin {
 	}
 
 
-	async createFileForCitation(book:string, chapter:string, verse_indice_inf:number,verse_indice_sup:number, version:string): Promise<string | null> {
+	async createFileForCitation(book: string, chapter: string, verse_indice_inf: number, verse_indice_sup: number, version: string): Promise<string | null> {
 		const citation = await this.getCitationFromUser();
 		if (!citation) return null;
 
@@ -117,12 +251,6 @@ export default class BibleCitationPlugin extends Plugin {
 		return null;
 	}
 
-	async getCitationFromUser(): Promise<string | null> {
-		return new Promise((resolve) => {
-			const prompt = new PromptModal(this.app, resolve);
-			prompt.open();
-		});
-	}
 
 	async createFile(fileName: string, content: string): Promise<TFile | null> {
 		try {
@@ -139,62 +267,3 @@ export default class BibleCitationPlugin extends Plugin {
 		return `[[${file.path}]]`;
 	}
 }
-
-class PromptModal extends Modal {
-	private resolve: (value: string | null) => void;
-
-	constructor(app: App, resolve: (value: string | null) => void) {
-		super(app);
-		this.resolve = resolve;
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: "Enter Bible Citation" });
-		const inputEl = contentEl.createEl("input", { type: "text" });
-		inputEl.focus();
-
-		const selectEl = contentEl.createEl("select");
-		const versions = ["ESV", "KJV", "LSG10", "BDS"];
-		versions.forEach(version => {
-			const optionEl = selectEl.createEl("option", { text: version });
-			optionEl.value = version;
-			selectEl.appendChild(optionEl);
-		});
-
-
-		const submitButton = contentEl.createEl("button", { text: "Submit" });
-
-
-
-		inputEl.addEventListener("keypress", (event) => {
-			if (event.key === "Enter") {
-				submitButton.click();
-			}
-		});
-
-
-		submitButton.onclick = () => {
-			const citation = inputEl.value.trim() + "||" + selectEl.value.trim();
-			this.resolve(citation || null);
-			this.close();
-		};
-
-		// Add the element as children 
-		
-		contentEl.appendChild(inputEl);
-		contentEl.appendChild(selectEl);
-		contentEl.appendChild(submitButton);
-
-	}
-
-	
-
-
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
-}
-
-
