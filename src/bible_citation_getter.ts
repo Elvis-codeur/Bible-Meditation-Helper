@@ -453,7 +453,8 @@ export default class BibleCitationGetter {
             "juges": "Judges",
             "1samuel": "I_Samuel",
             "isamuel": "I_Samuel",
-            "2samuel": "I_Samuel",
+
+            "2samuel": "II_Samuel",
             "iisamuel": "II_Samuel",
 
             "1rois": "I_Kings",

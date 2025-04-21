@@ -101,7 +101,7 @@ async changebibleCitationInTheDocument(content:string,newBibleCitationVersion:st
 		let result: [string, string][] = [];
 
 		matches.forEach(async match => {
-			const fullBlock = match[0];
+			const fullBlock = ">"+match[0];
 			let citationLine = fullBlock.split("\n")[0]
 			const oldBibleCitationVersion = this.extractBibleVersion(fullBlock) || "";
 
@@ -158,11 +158,13 @@ async changebibleCitationInTheDocument(content:string,newBibleCitationVersion:st
 
 		let old_citation_and_new_citation  = await this.changebibleCitationInTheDocument(content,newBibleCitationVersion);
 		
-
+		
 		old_citation_and_new_citation?.map((value)=>{
+			console.log("Jesus Christus ====== ",value,content)
 			updatedContent = updatedContent.replace(value[0],value[1]);
 		})
 
+		//updatedContent = updatedContent.replace("**4**","**ELVIS**")
 
 		console.log(updatedContent);
 		// Update the editor content
