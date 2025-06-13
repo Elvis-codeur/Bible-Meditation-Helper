@@ -14,7 +14,7 @@ class BibleCitationVersionChangePromptModal extends Modal {
 		
 
 		const selectEl = contentEl.createEl("select");
-		const versions = ["ESV", "KJV", "LSG10", "BDS"];
+		const versions = ["ESV", "KJV", "LSG10"];
 
 		versions.forEach(version => {
 			const optionEl = selectEl.createEl("option", { text: version });
@@ -66,7 +66,7 @@ class BibleCitationPromptModal extends Modal {
 		inputEl.focus();
 
 		const selectEl = contentEl.createEl("select");
-		const versions = ["ESV", "KJV", "LSG10", "BDS"];
+		const versions = ["ESV", "KJV", "LSG10"];
 		versions.forEach(version => {
 			const optionEl = selectEl.createEl("option", { text: version });
 			optionEl.value = version;

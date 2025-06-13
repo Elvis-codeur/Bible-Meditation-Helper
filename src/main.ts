@@ -10,7 +10,6 @@ const cheerio = require('cheerio');
 
 
 
-
 export default class BibleCitationPlugin extends Plugin {
 	async onload() {
 
@@ -28,7 +27,6 @@ export default class BibleCitationPlugin extends Plugin {
 		});
 
 		// Turn the citations in the file to another version command 
-
 		this.addCommand(
 			{
 				id: "change-bible-citation-version",
@@ -37,24 +35,11 @@ export default class BibleCitationPlugin extends Plugin {
 				hotkeys: [
 					{
 						modifiers: ["Mod"], // "Mod" is a placeholder for Ctrl on Windows/Linux and Cmd on macOS
-						key: "l", // You can change this to any key you prefer
+						key: "m", // You can change this to any key you prefer
 					},
 				],
 			}
 		)
-
-
-
-		this.registerMarkdownCodeBlockProcessor("html", (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
-			console.log("Elvis est un enfant de Dieu")
-			const myDropdown = el.querySelector("#select_bible_version_dropdown") as HTMLSelectElement;
-
-			if (myDropdown) {
-				myDropdown.addEventListener("change", function () {
-					console.log("Selected Bible Version:", myDropdown.value);
-				});
-			}
-		});
 
 		this.loadStyles();
 	}
@@ -85,51 +70,9 @@ export default class BibleCitationPlugin extends Plugin {
 		return match ? match[1] : null;
 	}
 
-	 
-	
-async changebibleCitationInTheDocument(content:string,newBibleCitationVersion:string) {
-		// Find all [!bible] blocks using a regex
-		const bibleBlockRegex = /\[!bible-meditation-helper-citation\](.*?)\n([\s\S]*?)\n/g;
-		const matches = [...content.matchAll(bibleBlockRegex)];
-
-		if (matches.length === 0) {
-			new Notice("No Bible citations found in the document.");
-			return;
-		}
-
-		// Replace the version in each [!bible] block
-		let result: [string, string][] = [];
-
-		matches.forEach(async match => {
-			const fullBlock = ">"+match[0];
-			let citationLine = fullBlock.split("\n")[0]
-			const oldBibleCitationVersion = this.extractBibleVersion(fullBlock) || "";
-
-			// Replace the old citation with a new one 
-			citationLine = citationLine.replace(oldBibleCitationVersion, newBibleCitationVersion.trim())
-
-			//console.log("New citation line =  ", citationLine);
-
-			// Get the citation to create new citation with the new bible version 
-
-			let citation = citationLine.split("[[")[1].split("|")[1];
-
-
-			let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(
-				citation + "||" + newBibleCitationVersion);
-
-			result.push([fullBlock,got_citation.citation])
-
-
-			
-		});
-		return result;
-
-	}
-
-
 
 	async changeBibleCitationVersion() {
+
 		const activeLeaf = this.app.workspace.activeLeaf;
 		if (!activeLeaf) {
 			new Notice("No active document found.");
@@ -144,8 +87,8 @@ async changebibleCitationInTheDocument(content:string,newBibleCitationVersion:st
 
 		const editor = (view as any).editor;
 		const content = editor.getValue();
-		let updatedContent =  content; 
-		
+		let updatedContent = content;
+
 
 		// Prompt the user to select a new version
 		const newBibleCitationVersion = await this.getBibleVersionFromUser();
@@ -156,20 +99,49 @@ async changebibleCitationInTheDocument(content:string,newBibleCitationVersion:st
 			return;
 		}
 
-		let old_citation_and_new_citation  = await this.changebibleCitationInTheDocument(content,newBibleCitationVersion);
-		
-		
-		old_citation_and_new_citation?.map((value)=>{
-			console.log("Jesus Christus ====== ",value,content)
-			updatedContent = updatedContent.replace(value[0],value[1]);
-		})
 
-		//updatedContent = updatedContent.replace("**4**","**ELVIS**")
+		const regex = />\[!bible-meditation-helper-citation]\s+\[\[([^\]]+)\]\]\n((?:>.*\n?)*)/g;
 
-		console.log(updatedContent);
-		// Update the editor content
-		editor.setValue(updatedContent);
+		let matches = [];
 
+		let match;
+
+		while ((match = regex.exec(content)) !== null) {
+			const startIndex = match.index;
+			const endIndex = regex.lastIndex;
+
+			matches.push({
+				reference: match[1],
+				text: match[2]
+					.split('\n')
+					.filter(line => line.startsWith('>'))
+					.map(line => line.slice(1).trim())
+					.join('\n'),
+				startIndex,
+				endIndex,
+				newReference: [match[1].split("|")[1], newBibleCitationVersion].join("||") // Create a new citation reference with the new bible version requisted
+			});
+		}
+
+
+		console.log(matches)
+
+		// Note: We reverse the list to avoid breaking indices as we edit from the back to the front.
+		let newContent = content;
+		for (const result of matches.reverse()) {
+			console.log(result.newReference);
+			newContent =
+				newContent.slice(0, result.startIndex) +
+				(await (new BibleCitationGetter({ app: this.app }).getCitation(result.newReference))).citation +
+				newContent.slice(result.endIndex);
+		}
+		const activeFile = this.app.workspace.getActiveFile();
+
+		if (!activeFile) {
+			console.error('No active file found');
+			return;
+		}
+		await this.app.vault.modify(activeFile, newContent);
 
 		new Notice(`Bible citations updated to version: ${newBibleCitationVersion}`);
 	}
