@@ -278,19 +278,24 @@ export default class BibleCitationPlugin extends Plugin {
 
 		let calloutList = findCalloutsWithIndices(content)
 
-		console.log(calloutList);
+		//console.log(calloutList);
 
+		if (calloutList.length > 0) {
+			// Add a text if it exists before the first callout 
+			nonCalloutTextList.push(content.slice(0, calloutList[0].startIndex - 1))
 
-		// Add a text if it exists before the first callout 
-		nonCalloutTextList.push(content.slice(0, calloutList[0].startIndex - 1))
+			// Split my text to separate the callouts from the normal text 
+			for (var compteur = 1; compteur < calloutList.length; compteur++) {
+				nonCalloutTextList.push(content.slice(calloutList[compteur - 1].endIndex, calloutList[compteur].startIndex))
+			}
 
-		// Split my text to separate the callouts from the normal text 
-		for (var compteur = 1; compteur < calloutList.length; compteur++) {
-			nonCalloutTextList.push(content.slice(calloutList[compteur - 1].endIndex, calloutList[compteur].startIndex))
+			// Add a text if its exists after the last callout 
+			nonCalloutTextList.push(content.slice(calloutList[calloutList.length - 1].endIndex))
+
 		}
-
-		// Add a text if its exists after the last callout 
-		nonCalloutTextList.push(content.slice(calloutList[calloutList.length - 1].endIndex))
+		else {
+			nonCalloutTextList.push(content)
+		}
 
 		console.log("nonCalloutTextList", nonCalloutTextList)
 
@@ -329,12 +334,11 @@ export default class BibleCitationPlugin extends Plugin {
 
 		// Recreate the content of the file now that we have added the verse
 		// I interleave the callout text and the non callout text back
-		let newFileContent = newNonCalloutTextList[0]  ?? '';
+		let newFileContent = newNonCalloutTextList[0] ?? '';
 
-		newFileContent =  newFileContent + "\n\n";
+		newFileContent = newFileContent + "\n\n";
 
-		for(var i = 0; i < calloutList.length; i++)
-		{
+		for (var i = 0; i < calloutList.length; i++) {
 			newFileContent += calloutList[i].text + "\n\n";
 			newFileContent += newNonCalloutTextList[i + 1] + "\n\n";
 		}
