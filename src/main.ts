@@ -3,6 +3,8 @@ import { App, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault 
 import BibleCitationGetter from "./bible_citation_getter";
 import path from "path";
 import { BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
+import { TranslateNotes, TranslationModal } from "./translate_not";
+import { BibleCitationSettingTab } from './settings-tab';
 
 
 
@@ -73,8 +75,38 @@ function getLineOffset(text: string, lineNumber: number): number {
 
 
 
+interface BibleCitationPluginSettings {
+    openaiApiKey: string;
+    claudeApiKey: string;
+    geminiApiKey: string;
+    deeplApiKey: string;
+    googleTranslateApiKey: string;
+}
+
 export default class BibleCitationPlugin extends Plugin {
+    settings: BibleCitationPluginSettings;
+
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
+	
+	async loadSettings() {
+        this.settings = Object.assign({
+            openaiApiKey: '',
+            claudeApiKey: '',
+            geminiApiKey: '',
+            deeplApiKey: '',
+            googleTranslateApiKey: ''
+        }, await this.loadData());
+    }
+
 	async onload() {
+		// Add this at the beginning of onload
+		await this.loadSettings();
+
+		// Add this line to register the settings tab
+        this.addSettingTab(new BibleCitationSettingTab(this.app, this));
+
 
 		// Bible citations adding command 
 		this.addCommand({
@@ -119,7 +151,55 @@ export default class BibleCitationPlugin extends Plugin {
 			}
 		)
 
+		// Translate the current note 
+		this.addCommand(
+			{
+				id: "translate-note",
+				name: "Translate the current note",
+				callback: () => this.translate_note(),
+				hotkeys: [
+					{
+						modifiers: ["Alt"], // "Mod" is a placeholder for Ctrl on Windows/Linux and Cmd on macOS
+						key: "T", // You can change this to any key you prefer
+					},
+				],
+			}
+		)
+
+
 		this.loadStyles();
+	}
+	async translate_note() {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			new Notice('No active file to translate');
+			return;
+		}
+
+		new TranslationModal(this.app, async (result) => {
+			try {
+				const translator = new TranslateNotes(this.app, {
+					openaiApiKey: this.settings.openaiApiKey,
+					claudeApiKey: this.settings.claudeApiKey,
+					geminiApiKey: this.settings.geminiApiKey,
+					deeplApiKey: this.settings.deeplApiKey,
+					googleTranslateApiKey: this.settings.googleTranslateApiKey
+				});
+
+				await translator.translateNote(
+					activeFile,
+					result.service,
+					result.targetLang,
+					result.customPrompt,
+					result.openAIModel
+				);
+
+				new Notice(`Translation completed for ${activeFile.basename}`);
+			} catch (error) {
+				console.error('Translation error:', error);
+				new Notice(`Translation failed: ${error.message}`);
+			}
+		}).open();
 	}
 
 	async loadStyles() {
