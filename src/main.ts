@@ -76,36 +76,36 @@ function getLineOffset(text: string, lineNumber: number): number {
 
 
 interface BibleCitationPluginSettings {
-    openaiApiKey: string;
-    claudeApiKey: string;
-    geminiApiKey: string;
-    deeplApiKey: string;
-    googleTranslateApiKey: string;
+	openaiApiKey: string;
+	claudeApiKey: string;
+	geminiApiKey: string;
+	deeplApiKey: string;
+	googleTranslateApiKey: string;
 }
 
 export default class BibleCitationPlugin extends Plugin {
-    settings: BibleCitationPluginSettings;
+	settings: BibleCitationPluginSettings;
 
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
-	
+
 	async loadSettings() {
-        this.settings = Object.assign({
-            openaiApiKey: '',
-            claudeApiKey: '',
-            geminiApiKey: '',
-            deeplApiKey: '',
-            googleTranslateApiKey: ''
-        }, await this.loadData());
-    }
+		this.settings = Object.assign({
+			openaiApiKey: '',
+			claudeApiKey: '',
+			geminiApiKey: '',
+			deeplApiKey: '',
+			googleTranslateApiKey: ''
+		}, await this.loadData());
+	}
 
 	async onload() {
 		// Add this at the beginning of onload
 		await this.loadSettings();
 
 		// Add this line to register the settings tab
-        this.addSettingTab(new BibleCitationSettingTab(this.app, this));
+		this.addSettingTab(new BibleCitationSettingTab(this.app, this));
 
 
 		// Bible citations adding command 
@@ -141,7 +141,7 @@ export default class BibleCitationPlugin extends Plugin {
 			{
 				id: "convert-plain-citation-to-plugging-citations",
 				name: "Find the plain bible citations in the document and turn them into the plugging citations",
-				callback: () => this.convert_plain_citations_to_plugging_citations(),
+				callback: () => this.convertPlainCitationsToPluggingCitations(),
 				hotkeys: [
 					{
 						modifiers: ["Alt"], // "Mod" is a placeholder for Ctrl on Windows/Linux and Cmd on macOS
@@ -304,7 +304,7 @@ export default class BibleCitationPlugin extends Plugin {
 		new Notice(`Bible citations updated to version: ${newBibleCitationVersion}`);
 	}
 
-	async convert_plain_citations_to_plugging_citations() {
+	async convertPlainCitationsToPluggingCitations() {
 
 		const activeLeaf = this.app.workspace.activeLeaf;
 		if (!activeLeaf) {
@@ -348,6 +348,7 @@ export default class BibleCitationPlugin extends Plugin {
 		//const bibleRegex = new RegExp(`\\b(?:${bookRegex})\\s+\\d{1,3}(?::\\d{1,3}(?:[-–]\\d{1,3})?)?\\b`, "gi");
 
 		//const regex = /\b(?:[1-3]?\s?[A-Za-zÀ-ÿ]+(?:\s?[A-Za-zÀ-ÿ]+)*)(?:\s?\d{1,3}(:\d{1,3})?(?:-\d{1,3}(:\d{1,3})?)?)\b/g;
+		
 		const regex = /\b(?:[1-3]?\s?[A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿa-zà-ÿ]+)*)(?:\s+\d{1,3}(?::\d{1,3})?(?:-\d{1,3})?)\b/g;
 
 
@@ -377,7 +378,6 @@ export default class BibleCitationPlugin extends Plugin {
 			nonCalloutTextList.push(content)
 		}
 
-		console.log("nonCalloutTextList", nonCalloutTextList)
 
 		var newContentNonCalloutTextList = [];
 
@@ -388,7 +388,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 			for (var line of nonCalloutText.split("\n")) {
 				// If it is not a line of the definition of a callout or not in a callout 
-				if (!(line.startsWith(">[!bible-meditation-helper-citation]") || line.startsWith(">"))) {
+				if (!line.startsWith(line.startsWith(">"))) {
 					if (line.match(regex)) {
 						let reference = [line, newBibleCitationVersion].join("||");
 						try {
@@ -399,6 +399,9 @@ export default class BibleCitationPlugin extends Plugin {
 						catch {
 							newContentNonCalloutTextList.push(line)
 						}
+					}
+					else {
+						newContentNonCalloutTextList.push(line)
 					}
 				}
 				else {
@@ -412,6 +415,10 @@ export default class BibleCitationPlugin extends Plugin {
 		}
 
 
+		console.log("nonCalloutTextList", nonCalloutTextList)
+		console.log("newNonCalloutTextList", newNonCalloutTextList)
+
+
 		// Recreate the content of the file now that we have added the verse
 		// I interleave the callout text and the non callout text back
 		let newFileContent = newNonCalloutTextList[0] ?? '';
@@ -423,7 +430,7 @@ export default class BibleCitationPlugin extends Plugin {
 			newFileContent += newNonCalloutTextList[i + 1] + "\n\n";
 		}
 
-		//console.log("newFileContent",newFileContent)
+		console.log("newFileContent", newFileContent)
 
 
 		const activeFile = this.app.workspace.getActiveFile();
