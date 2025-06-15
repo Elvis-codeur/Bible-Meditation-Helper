@@ -3,17 +3,10 @@ import OpenAI from 'openai';
 import { Translate } from '@google-cloud/translate/build/src/v2';
 import axios from 'axios';
 import { requestUrl, RequestUrlResponse } from 'obsidian';
+import { OpenAIModel, TranslationModel, TranslationService, TranslationSettings } from './type_definitions';
 
-interface TranslationSettings {
-    openaiApiKey: string;
-    claudeApiKey: string;
-    geminiApiKey: string;
-    deeplApiKey: string;
-    googleTranslateApiKey: string;
-}
 
-type TranslationService = 'claude' | 'chatgpt' | 'gemini' | 'google' | 'deepl';
-type OpenAIModel = 'gpt-3.5-turbo' | 'gpt-4' | 'gpt-4-turbo-preview' | 'gpt-4-1106-preview' | 'gpt-4-0125-preview';
+
 
 export class TranslateNotes {
     private app: App;
@@ -86,7 +79,20 @@ export class TranslateNotes {
         }
     }
 
-    private async translateWithOpenAI(content: string, targetLang: string, customPrompt?: string, model?: OpenAIModel): Promise<string> {
+    //import { Vault, TFile } from 'obsidian'; // make sure these are imported
+
+    private async translateWithOpenAI(
+        content: string,
+        targetLang: string,
+        customPrompt?: string,
+        model?: OpenAIModel
+    ): Promise<string> {
+
+
+        const activeFile = this.app.workspace.getActiveFile();
+        const inputFileName = activeFile ? activeFile.name : 'unknown-file';
+
+
         try {
             const response = await requestUrl({
                 url: 'https://api.openai.com/v1/chat/completions',
@@ -100,11 +106,11 @@ export class TranslateNotes {
                     messages: [
                         {
                             role: 'system',
-                            content: `You are a professional translator. Translate the following text to ${targetLang} while maintaining the original formatting and markdown syntax. ${customPrompt}`
+                            content: `You are a professional translator. Translate the following text to ${targetLang} while maintaining the original formatting and markdown syntax. ${customPrompt || ''}`
                         },
                         {
                             role: 'user',
-                            content:  `Translate this text to ${targetLang}:\n\n${content}`
+                            content: `Translate this text to ${targetLang}:\n\n${content}`
                         }
                     ],
                     temperature: 0.2
@@ -115,14 +121,73 @@ export class TranslateNotes {
                 throw new Error(`OpenAI API error: ${response.status}`);
             }
 
-            return response.json.choices[0].message.content;
+            const translatedText = response.json.choices[0].message.content;
+
+            // Build metadata object
+            const metadata = {
+                translation_id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                model: {
+                    model_name: model || 'gpt-4-turbo-preview',
+                    api_base: 'https://api.openai.com/v1',
+                    organization: null // or your org id if applicable
+                },
+                translation_settings: {
+                    temperature: 0.2,
+                    // add other settings as needed
+                },
+                translation_data: {
+                    source_text: content,
+                    translated_text: translatedText,
+                    source_language: 'auto', // or add a param for source lang detection
+                    target_language: targetLang
+                },
+                system_info: {
+                    platform: navigator.platform,
+                    userAgent: navigator.userAgent,
+                    appVersion: navigator.appVersion
+                },
+                notes: null
+            };
+
+            await this.saveTranslationMetadata(metadata,inputFileName,targetLang);
+
+            return translatedText;
         } catch (error) {
             console.error('Translation error:', error);
             throw new Error(`OpenAI translation failed: ${error.message}`);
         }
     }
 
-    async translateNote(file: TFile, service: TranslationService, targetLang: string, customPrompt?: string, openAIModel?: OpenAIModel): Promise<void> {
+    private async saveTranslationMetadata(metadata: any, inputFileName: string, targetLang: string) {
+        try {
+            // Use the output folder from settings or fallback
+            const baseFolder = this.settings.translationsOutputFolder?.trim() || 'Translations';
+
+            // Create folder path using the input file name (without extension) as subfolder
+            const inputFileBaseName = inputFileName.replace(/\.[^/.]+$/, ""); // Remove file extension
+
+            const folderPath = `${baseFolder}/${inputFileBaseName}`;
+
+            // Ensure the folder exists
+            await this.app.vault.createFolder(folderPath).catch(() => { });
+
+            // File name includes target language and translation ID
+            const fileName = `${folderPath}/translation-${targetLang}-${metadata.translation_id}.json`;
+
+            const fileContent = JSON.stringify(metadata, null, 2);
+
+            await this.app.vault.adapter.write(fileName, fileContent);
+
+        } catch (error) {
+            console.error('Failed to save translation metadata:', error);
+        }
+    }
+
+
+
+
+    async translateNote(file: TFile, service: TranslationService, targetLang: string, customPrompt?: string, model?: TranslationModel): Promise<void> {
         try {
             // Validate API key before proceeding
             this.validateApiKey(service);
@@ -132,7 +197,7 @@ export class TranslateNotes {
 
             switch (service) {
                 case 'chatgpt':
-                    translatedContent = await this.translateWithOpenAI(fileContent, targetLang, customPrompt, openAIModel);
+                    translatedContent = await this.translateWithOpenAI(fileContent, targetLang, customPrompt, model as OpenAIModel);
                     break;
                 case 'deepl':
                     translatedContent = await this.translateWithDeepL(fileContent, targetLang);
@@ -156,115 +221,5 @@ export class TranslateNotes {
                 throw new Error('Translation failed: Unknown error occurred');
             }
         }
-    }
-}
-
-export class TranslationModal extends Modal {
-    private result: { 
-        service: TranslationService; 
-        targetLang: string; 
-        customPrompt?: string;
-        openAIModel?: OpenAIModel 
-    };
-    private onSubmit: (result: { 
-        service: TranslationService; 
-        targetLang: string; 
-        customPrompt?: string;
-        openAIModel?: OpenAIModel 
-    }) => void;
-
-    constructor(app: App, onSubmit: (result: { service: TranslationService; targetLang: string; customPrompt?: string; openAIModel?: OpenAIModel }) => void) {
-        super(app);
-        this.onSubmit = onSubmit;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.createEl('h3', { text: 'Translation Settings' });
-
-        // Translation service selection
-        contentEl.createEl('label', { text: 'Translation Service' });
-        const serviceSelect = contentEl.createEl('select');
-        ['claude', 'chatgpt', 'gemini', 'google', 'deepl'].forEach(service => {
-            serviceSelect.createEl('option', { text: service, value: service });
-        });
-
-        // OpenAI model selection (initially hidden)
-        const modelContainer = contentEl.createEl('div');
-        modelContainer.style.display = 'none';
-        contentEl.createEl('label', { text: 'OpenAI Model', parent: modelContainer });
-        const modelSelect = contentEl.createEl('select', { parent: modelContainer });
-        [
-            'gpt-4-0125-preview',
-            'gpt-4-turbo-preview',
-            'gpt-4-1106-preview',
-            'gpt-4',
-            'gpt-3.5-turbo'
-        ].forEach(model => {
-            const option = modelSelect.createEl('option', { 
-                text: model, 
-                value: model 
-            });
-            // Set gpt-4-turbo-preview as default
-            if (model === 'gpt-4-turbo-preview') {
-                option.selected = true;
-            }
-        });
-
-        // Show/hide model selection based on service selection
-        serviceSelect.addEventListener('change', () => {
-            modelContainer.style.display = serviceSelect.value === 'chatgpt' ? 'block' : 'none';
-        });
-
-        // Target language input
-        contentEl.createEl('label', { text: 'Target Language' });
-        const langInput = new TextComponent(contentEl)
-            .setPlaceholder('Enter target language (e.g., fr, es, de)');
-
-        // Custom prompt input
-        contentEl.createEl('label', { text: 'Custom Translation Prompt (optional)' });
-        const promptInput = new TextComponent(contentEl)
-            .setPlaceholder('Enter custom translation instructions');
-
-        // Submit button
-        const submitBtn = contentEl.createEl('button', { 
-            text: 'Translate',
-            cls: 'mod-cta'
-        });
-
-        submitBtn.onclick = async () => {
-            const targetLang = langInput.getValue().trim();
-            if (!targetLang) {
-                new Notice('Please enter a target language code (e.g., fr, es, de)');
-                return;
-            }
-
-            const activeFile = this.app.workspace.getActiveFile();
-            if (!activeFile) {
-                new Notice('No active file to translate');
-                return;
-            }
-
-            try {
-                this.result = {
-                    service: serviceSelect.value as TranslationService,
-                    targetLang: targetLang,
-                    customPrompt: promptInput.getValue(),
-                    openAIModel: serviceSelect.value === 'chatgpt' ? 
-                        modelSelect.value as OpenAIModel : 
-                        undefined
-                };
-                this.onSubmit(this.result);
-                this.close();
-            } catch (error) {
-                new Notice(`Translation failed: ${error.message}`);
-                console.error('Translation error:', error);
-            }
-        };
-    }
-
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
     }
 }

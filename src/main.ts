@@ -3,17 +3,15 @@ import { App, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault 
 import BibleCitationGetter from "./bible_citation_getter";
 import path from "path";
 import { BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
-import { TranslateNotes, TranslationModal } from "./translate_not";
+import { TranslateNotes, } from "./translate_not";
+import {TranslationModal} from "./prompt_modals"
 import { BibleCitationSettingTab } from './settings-tab';
+import { BibleCitationPluginSettings, CalloutBlock } from "./type_definitions";
 
 
 
 
-interface CalloutBlock {
-	text: string;
-	startIndex: number;
-	endIndex: number;
-}
+
 
 function findCalloutsWithIndices(markdown: string): CalloutBlock[] {
 	const lines = markdown.split('\n');
@@ -75,13 +73,7 @@ function getLineOffset(text: string, lineNumber: number): number {
 
 
 
-interface BibleCitationPluginSettings {
-	openaiApiKey: string;
-	claudeApiKey: string;
-	geminiApiKey: string;
-	deeplApiKey: string;
-	googleTranslateApiKey: string;
-}
+
 
 export default class BibleCitationPlugin extends Plugin {
 	settings: BibleCitationPluginSettings;
@@ -96,7 +88,8 @@ export default class BibleCitationPlugin extends Plugin {
 			claudeApiKey: '',
 			geminiApiKey: '',
 			deeplApiKey: '',
-			googleTranslateApiKey: ''
+			googleTranslateApiKey: '',
+			customTranslationPrompts: []  // initialize with empty array
 		}, await this.loadData());
 	}
 
@@ -183,7 +176,9 @@ export default class BibleCitationPlugin extends Plugin {
 					claudeApiKey: this.settings.claudeApiKey,
 					geminiApiKey: this.settings.geminiApiKey,
 					deeplApiKey: this.settings.deeplApiKey,
-					googleTranslateApiKey: this.settings.googleTranslateApiKey
+					googleTranslateApiKey: this.settings.googleTranslateApiKey,
+					translationsOutputFolder:this.settings.translationsOutputFolder,
+					
 				});
 
 				await translator.translateNote(
@@ -191,7 +186,7 @@ export default class BibleCitationPlugin extends Plugin {
 					result.service,
 					result.targetLang,
 					result.customPrompt,
-					result.openAIModel
+					result.iaModel
 				);
 
 				new Notice(`Translation completed for ${activeFile.basename}`);
@@ -199,7 +194,11 @@ export default class BibleCitationPlugin extends Plugin {
 				console.error('Translation error:', error);
 				new Notice(`Translation failed: ${error.message}`);
 			}
-		}).open();
+		},
+		this.settings.customTranslationPrompts,
+	
+	
+	).open();
 	}
 
 	async loadStyles() {
@@ -342,15 +341,16 @@ export default class BibleCitationPlugin extends Plugin {
 		];
 
 		// STEP 2: Build a regex from those books
-		const bookRegex = books.join("|");
+		//const bookRegex = books.join("|");
 
 		// STEP 3: Main pattern - find Book + chapter:verse
 		//const bibleRegex = new RegExp(`\\b(?:${bookRegex})\\s+\\d{1,3}(?::\\d{1,3}(?:[-–]\\d{1,3})?)?\\b`, "gi");
 
 		//const regex = /\b(?:[1-3]?\s?[A-Za-zÀ-ÿ]+(?:\s?[A-Za-zÀ-ÿ]+)*)(?:\s?\d{1,3}(:\d{1,3})?(?:-\d{1,3}(:\d{1,3})?)?)\b/g;
-		
+
 		const regex = /\b(?:[1-3]?\s?[A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿa-zà-ÿ]+)*)(?:\s+\d{1,3}(?::\d{1,3})?(?:-\d{1,3})?)\b/g;
 
+		//const regex = /\b(?:1\s?Sam|2\s?Sam|1\s?Rois|2\s?Rois|1\s?Chroniques|2\s?Chroniques|Esdras|Néhémie|Esther|Job|Psaumes?|Proverbes|Ecclésiaste|Cantique\s?des\s?Cantiques|Isaïe|Jérémie|Lamentations|Ézéchiel|Daniel|Osée|Joël|Amos|Abdias|Jonas|Michée|Nahum|Habacuc|Sophonie|Aggée|Zacharie|Malachie|Matthieu|Marc|Luc|Jean|Actes|Romains|1\s?Corinthiens|2\s?Corinthiens|Galates|Éphésiens|Philippiens|Colossiens|1\s?Thessaloniciens|2\s?Thessaloniciens|1\s?Timothée|2\s?Timothée|Tite|Philémon|Hébreux|Jacques|1\s?Pierre|2\s?Pierre|1\s?Jean|2\s?Jean|3\s?Jean|Jude|Apocalypse|Gen|Ex|Lv|Nb|Dt|Jos|Jg|Rt|1\s?S|2\s?S|1\s?R|2\s?R|1\s?Ch|2\s?Ch|Esd|Néh|Est|Jb|Ps|Pr|Eccl|Cant|Is|Jr|Lm|Ez|Dn|Os|Jl|Am|Ab|Jon|Mi|Na|Hab|So|Ag|Za|Mal|Mt|Mc|Lc|Jn|Ac|Rm|1\s?Co|2\s?Co|Ga|Ep|Ph|Co|1\s?Th|2\s?Th|1\s?Ti|2\s?Ti|Tt|Phm|He|Jc|1\s?Pi|2\s?Pi|1\s?Jn|2\s?Jn|3\s?Jn|Jd|Ap|Gn|Ex|Lv|Nb|Dt|Jos|Jg|Rt|1\s?S|2\s?S|1\s?R|2\s?R|1\s?Ch|2\s?Ch|Esd|Néh|Est|Jb|Ps|Pr|Eccl|Cant|Is|Jr|Lm|Ez|Dn|Os|Jl|Am|Ab|Jon|Mi|Na|Hab|So|Ag|Za|Mal|Mt|Mc|Lc|Jn|Ac|Rm|1\s?Co|2\s?Co|Ga|Ep|Ph|Co|1\s?Th|2\s?Th|1\s?Ti|2\s?Ti|Tt|Phm|He|Jc|1\s?Pi|2\s?Pi|1\s?Jn|2\s?Jn|3\s?Jn|Jd|Ap)\s*\d{1,3}\s*:?\s*\d{1,3}(?:\s*-\s*\d{1,3})?\b/g;
 
 		let nonCalloutTextList = [];
 
