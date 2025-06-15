@@ -69,5 +69,57 @@ export class BibleCitationSettingTab extends PluginSettingTab {
                     this.plugin.settings.googleTranslateApiKey = value;
                     await this.plugin.saveSettings();
                 }));
+
+        new Setting(containerEl)
+            .setName('Translations Output Folder')
+            .setDesc('Folder inside your vault where translation JSON files will be saved')
+            .addText(text => text
+                .setPlaceholder('e.g., Translations')
+                .setValue(this.plugin.settings.translationsOutputFolder || '')
+                .onChange(async (value) => {
+                    this.plugin.settings.translationsOutputFolder = value.trim();
+                    await this.plugin.saveSettings();
+                }));
+
+
+
+        containerEl.createEl('h3', { text: 'Custom Translation Prompts' });
+
+        this.plugin.settings.customTranslationPrompts.forEach((prompt, index) => {
+            new Setting(containerEl)
+                .setName(`Prompt ${index + 1}`)
+                .addTextArea(text => {
+                    text.setValue(prompt)
+                        .onChange(async (value) => {
+                            this.plugin.settings.customTranslationPrompts[index] = value;
+                            await this.plugin.saveSettings();
+                        });
+                    text.inputEl.rows = 3;
+                    text.inputEl.style.width = '100%';
+                })
+                .addExtraButton(button => {
+                    button.setIcon('trash')
+                        .setTooltip('Delete prompt')
+                        .onClick(async () => {
+                            this.plugin.settings.customTranslationPrompts.splice(index, 1);
+                            await this.plugin.saveSettings();
+                            this.display(); // Re-render settings
+                        });
+                });
+        });
+
+        new Setting(containerEl)
+            .addButton(button => {
+                button.setButtonText('Add Prompt')
+                    .setCta()
+                    .onClick(async () => {
+                        this.plugin.settings.customTranslationPrompts.push('');
+                        await this.plugin.saveSettings();
+                        this.display(); // Re-render settings
+                    });
+            });
+
+
+
     }
 }
