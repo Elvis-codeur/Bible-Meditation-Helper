@@ -150,7 +150,7 @@ export class TranslateNotes {
                 notes: null
             };
 
-            await this.saveTranslationMetadata(metadata,inputFileName,targetLang);
+            await this.saveTranslationMetadata(metadata, inputFileName, targetLang);
 
             return translatedText;
         } catch (error) {
@@ -185,30 +185,66 @@ export class TranslateNotes {
     }
 
 
+    private extractWikiLinks = (text: string) => {
+        // Modified regex to handle nested links
+        const regex = /\[\[(?:[^\[\]]|\[[^\[\]]*\])*?\]\]/g;
+        const matches: Array<{
+            fullText: string,
+            beginIndex: number,
+            endIndex: number
+        }> = [];
+
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(text)) !== null) {
+            matches.push({
+                fullText: match[0],
+                beginIndex: match.index,
+                endIndex: match.index + match[0].length - 1
+            });
+        }
+
+        // Sort matches by beginIndex in reverse order to handle nested links correctly
+        matches.sort((a, b) => b.beginIndex - a.beginIndex);
+        return matches;
+    };
+
+    
+
 
 
     async translateNote(file: TFile, service: TranslationService, targetLang: string, customPrompt?: string, model?: TranslationModel): Promise<void> {
         try {
-            // Validate API key before proceeding
             this.validateApiKey(service);
+            let fileContent = await this.app.vault.read(file);
 
-            const fileContent = await this.app.vault.read(file);
-            let translatedContent = '';
+            // Extract and replace wiki links
+            const matcheList = this.extractWikiLinks(fileContent);
+            let processedContent = fileContent;
+            const linksRecoveryMap = new Map<string, string>();
 
-            switch (service) {
-                case 'chatgpt':
-                    translatedContent = await this.translateWithOpenAI(fileContent, targetLang, customPrompt, model as OpenAIModel);
-                    break;
-                case 'deepl':
-                    translatedContent = await this.translateWithDeepL(fileContent, targetLang);
-                    break;
-                default:
-                    throw new Error(`Unsupported translation service: ${service}`);
-            }
+            // Process matches in reverse order to handle nested links correctly
+            matcheList.forEach((match, index) => {
+                const placeholder = `[[WIKILINK_${index}]]`; // More unique placeholder
+                processedContent = processedContent.slice(0, match.beginIndex) + 
+                                 placeholder + 
+                                 processedContent.slice(match.endIndex + 1);
+                linksRecoveryMap.set(placeholder, match.fullText);
+            });
 
-            if (!translatedContent) {
-                throw new Error('No translation received from the service.');
-            }
+            //console.log(processedContent)
+
+            // Translate the processed content
+            let translatedContent = await this.translateWithOpenAI(
+                processedContent, 
+                targetLang, 
+                customPrompt, 
+                model as OpenAIModel
+            );
+
+            // Restore wiki links in reverse order
+            Array.from(linksRecoveryMap.entries()).forEach(([placeholder, originalLink]) => {
+                translatedContent = translatedContent.replace(placeholder, originalLink);
+            });
 
             // Create new file with translated content
             const newFileName = `${file.basename}_${targetLang}.${file.extension}`;
@@ -221,5 +257,8 @@ export class TranslateNotes {
                 throw new Error('Translation failed: Unknown error occurred');
             }
         }
+
+
+
     }
 }
