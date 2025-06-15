@@ -233,6 +233,7 @@ export class TranslateNotes {
 
             //console.log(processedContent)
 
+            console.log("translation initiated")
             // Translate the processed content
             let translatedContent = await this.translateWithOpenAI(
                 processedContent, 
@@ -240,6 +241,8 @@ export class TranslateNotes {
                 customPrompt, 
                 model as OpenAIModel
             );
+            console.log("translation initiated")
+
 
             // Restore wiki links in reverse order
             Array.from(linksRecoveryMap.entries()).forEach(([placeholder, originalLink]) => {
@@ -247,7 +250,7 @@ export class TranslateNotes {
             });
 
             // Create new file with translated content
-            const newFileName = `${file.basename}_${targetLang}.${file.extension}`;
+            const newFileName = `${file.parent?.path}/${file.basename}_${targetLang}.${file.extension}`;
             await this.app.vault.create(newFileName, translatedContent);
 
         } catch (error) {
