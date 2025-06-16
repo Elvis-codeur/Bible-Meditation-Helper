@@ -924,8 +924,8 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
     newFileContent = newFileContent;
 
     for (var i = 0; i < calloutList.length; i++) {
-        newFileContent += calloutList[i].text;
-        newFileContent += newNonCalloutTextList[i + 1];
+        newFileContent += calloutList[i].text + "\n";
+        newFileContent += newNonCalloutTextList[i + 1] + "\n";
     }
 
     console.log("newFileContent", newFileContent)

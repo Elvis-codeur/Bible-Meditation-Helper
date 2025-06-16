@@ -2,7 +2,7 @@ import { App, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault 
 
 import BibleCitationGetter, { changeBibleCitationVersionInText, convertPlainCitationsToPluggingCitationsInText } from "./bible_citation_getter";
 import path from "path";
-import { BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
+import { BibleCitationChangePlainTextCitation, BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
 import { TranslateNotes, } from "./translate_not";
 import {TranslationModal} from "./prompt_modals"
 import { BibleCitationSettingTab } from './settings-tab';
@@ -171,7 +171,7 @@ export default class BibleCitationPlugin extends Plugin {
 		const editor = (view as any).editor;
 		const content = editor.getValue();
 		// Prompt the user to select a new version
-		const newBibleCitationVersion = await this.getBibleVersionFromUser();
+		const newBibleCitationVersion = await this.getBibleVersionFromUserPlainTextCitationCase();
 
 
 		if (!newBibleCitationVersion) {
@@ -232,7 +232,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 
 		// Prompt the user to select a new version
-		const newBibleCitationVersion = await this.getBibleVersionFromUser();
+		const newBibleCitationVersion = await this.getBibleVersionFromUserChangeExistingCitationsVersion();
 
 		if (!newBibleCitationVersion) {
 			new Notice("No version selected.");
@@ -258,9 +258,17 @@ export default class BibleCitationPlugin extends Plugin {
 	
 
 
-	async getBibleVersionFromUser(): Promise<string | null> {
+	async getBibleVersionFromUserChangeExistingCitationsVersion(): Promise<string | null> {
 		return new Promise((resolve) => {
 			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve);
+			prompt.open();
+		});
+
+	}
+
+	async getBibleVersionFromUserPlainTextCitationCase(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const prompt = new BibleCitationChangePlainTextCitation(this.app, resolve);
 			prompt.open();
 		});
 
