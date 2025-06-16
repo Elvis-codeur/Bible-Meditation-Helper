@@ -171,7 +171,7 @@ class TranslationModal extends Modal {
 		const modelsByService: Record<TranslationService, TranslationModel[]> = {
 			chatgpt: [
 				'gpt-4',
-				'gpt-4-o',
+				'gpt-4o',
 				'o1',
 				'o3',
 				'gpt-3.5-turbo',
