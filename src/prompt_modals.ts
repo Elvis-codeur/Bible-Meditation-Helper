@@ -17,12 +17,13 @@ class BibleCitationVersionChangePromptModal extends Modal {
 
 		// Description
 		const description = contentEl.createEl("p", {
-			text: "Choose the bible version to which you want convert your bible citations "
+			text: "Choose the bible version to which you want convert your bible citations"
 		});
 		description.style.marginBottom = "50px";
 		description.style.fontStyle = "italic";
 		description.style.color = "#667";
-		description.style.fontSize = "15px";
+		description.style.fontSize = "25px";
+		description.style.height = "30px";
 
 		// Select element
 		const selectEl = contentEl.createEl("select");
