@@ -846,16 +846,47 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
 
     //const regex = /\b(?:[1-3]?\s?[A-Za-zÀ-ÿ]+(?:\s?[A-Za-zÀ-ÿ]+)*)(?:\s?\d{1,3}(:\d{1,3})?(?:-\d{1,3}(:\d{1,3})?)?)\b/g;
 
-    const regex = /\b(?:[1-3]?\s?[A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿa-zà-ÿ]+)*)(?:\s+\d{1,3}(?::\d{1,3})?(?:-\d{1,3})?)\b/g;
+    const BibleCitaionRegex = /\b(?:[1-3]?\s?[A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿa-zà-ÿ]+)*)(?:\s+\d{1,3}(?::\d{1,3})?(?:-\d{1,3})?)\b/g;
 
     //const regex = /\b(?:1\s?Sam|2\s?Sam|1\s?Rois|2\s?Rois|1\s?Chroniques|2\s?Chroniques|Esdras|Néhémie|Esther|Job|Psaumes?|Proverbes|Ecclésiaste|Cantique\s?des\s?Cantiques|Isaïe|Jérémie|Lamentations|Ézéchiel|Daniel|Osée|Joël|Amos|Abdias|Jonas|Michée|Nahum|Habacuc|Sophonie|Aggée|Zacharie|Malachie|Matthieu|Marc|Luc|Jean|Actes|Romains|1\s?Corinthiens|2\s?Corinthiens|Galates|Éphésiens|Philippiens|Colossiens|1\s?Thessaloniciens|2\s?Thessaloniciens|1\s?Timothée|2\s?Timothée|Tite|Philémon|Hébreux|Jacques|1\s?Pierre|2\s?Pierre|1\s?Jean|2\s?Jean|3\s?Jean|Jude|Apocalypse|Gen|Ex|Lv|Nb|Dt|Jos|Jg|Rt|1\s?S|2\s?S|1\s?R|2\s?R|1\s?Ch|2\s?Ch|Esd|Néh|Est|Jb|Ps|Pr|Eccl|Cant|Is|Jr|Lm|Ez|Dn|Os|Jl|Am|Ab|Jon|Mi|Na|Hab|So|Ag|Za|Mal|Mt|Mc|Lc|Jn|Ac|Rm|1\s?Co|2\s?Co|Ga|Ep|Ph|Co|1\s?Th|2\s?Th|1\s?Ti|2\s?Ti|Tt|Phm|He|Jc|1\s?Pi|2\s?Pi|1\s?Jn|2\s?Jn|3\s?Jn|Jd|Ap|Gn|Ex|Lv|Nb|Dt|Jos|Jg|Rt|1\s?S|2\s?S|1\s?R|2\s?R|1\s?Ch|2\s?Ch|Esd|Néh|Est|Jb|Ps|Pr|Eccl|Cant|Is|Jr|Lm|Ez|Dn|Os|Jl|Am|Ab|Jon|Mi|Na|Hab|So|Ag|Za|Mal|Mt|Mc|Lc|Jn|Ac|Rm|1\s?Co|2\s?Co|Ga|Ep|Ph|Co|1\s?Th|2\s?Th|1\s?Ti|2\s?Ti|Tt|Phm|He|Jc|1\s?Pi|2\s?Pi|1\s?Jn|2\s?Jn|3\s?Jn|Jd|Ap)\s*\d{1,3}\s*:?\s*\d{1,3}(?:\s*-\s*\d{1,3})?\b/g;
 
+
+    // Given that I don't find any satisfactory algorithm to find the callouts, I will use a code 
+    // where I do not separate callout from normal text
+
+
+    let result: string[] = [];
+
+    for(var line of content.split("\n"))
+    {
+        if (!line.startsWith(">"))
+        {
+            if(line.match(BibleCitaionRegex))
+            {
+                console.log(line)
+                result.push(await ((await new 
+                    BibleCitationGetter({app:this.app}).getCitation([line,newBibleCitationVersion].join("||"))).citation))
+            }
+            else{
+                result.push(line)
+            }
+        }
+        else
+        {
+            result.push(line)
+        }
+    }
+
+    return result.join("\n")
+
+
+    /*
     let nonCalloutTextList = [];
 
     // The list of the new non callout text with the verse inserted if needed 
     let newNonCalloutTextList = [];
 
-    let calloutList = findCalloutsWithIndices(content)
+    let calloutList = findCallouts(content)
 
     console.log("calloutList",calloutList);
 
@@ -887,7 +918,7 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
         for (var line of nonCalloutText.split("\n")) {
             // If it is not a line of the definition of a callout or not in a callout 
             if (!line.startsWith(">")) {
-                if (line.match(regex)) {
+                if (line.match(BibleCitaionRegex)) {
                     let reference = [line, newBibleCitationVersion].join("||");
                     try {
                         newContentNonCalloutTextList.push((await (new BibleCitationGetter({ app: this.app })).getCitation(reference)).citation + "\n")
@@ -932,6 +963,11 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
 
 
     return newFileContent;
+
+
+    */
+
+
 
 }
 
