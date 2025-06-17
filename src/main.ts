@@ -1,8 +1,8 @@
 import { App, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
 
-import BibleCitationGetter from "./bible_citation_getter";
+import BibleCitationGetter, { changeBibleCitationVersionInText, convertPlainCitationsToPluggingCitationsInText } from "./bible_citation_getter";
 import path from "path";
-import { BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
+import { BibleCitationChangePlainTextCitation, BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
 import { TranslateNotes, } from "./translate_not";
 import {TranslationModal} from "./prompt_modals"
 import { BibleCitationSettingTab } from './settings-tab';
@@ -13,62 +13,7 @@ import { BibleCitationPluginSettings, CalloutBlock } from "./type_definitions";
 
 
 
-function findCalloutsWithIndices(markdown: string): CalloutBlock[] {
-	const lines = markdown.split('\n');
-	const results: CalloutBlock[] = [];
 
-	let insideCallout = false;
-	let calloutStartLine = 0;
-	let currentCalloutLines: string[] = [];
-
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-
-		if (!insideCallout) {
-			// Detect callout start line: >[!type] Optional text
-			if (/^\s{0,3}>\s*\[!\w+.*?\]/.test(line)) {
-				insideCallout = true;
-				calloutStartLine = i;
-				currentCalloutLines = [line];
-			}
-		} else {
-			// Continue collecting lines starting with >
-			if (/^\s{0,3}>\s?.*/.test(line)) {
-				currentCalloutLines.push(line);
-			} else {
-				// End of callout
-				const startIndex = getLineOffset(markdown, calloutStartLine);
-				const endIndex = getLineOffset(markdown, i);
-				results.push({
-					text: currentCalloutLines.join('\n'),
-					startIndex,
-					endIndex
-				});
-				insideCallout = false;
-			}
-		}
-	}
-
-	// If file ends during a callout
-	if (insideCallout) {
-		const startIndex = getLineOffset(markdown, calloutStartLine);
-		results.push({
-			text: currentCalloutLines.join('\n'),
-			startIndex,
-			endIndex: markdown.length
-		});
-	}
-
-	return results;
-}
-
-// Helper to get character offset from line number
-function getLineOffset(text: string, lineNumber: number): number {
-	const lines = text.split('\n');
-	return lines
-		.slice(0, lineNumber)
-		.reduce((offset, line) => offset + line.length + 1, 0); // +1 for newline
-}
 
 
 
@@ -209,6 +154,46 @@ export default class BibleCitationPlugin extends Plugin {
 		document.head.appendChild(style);
 	}
 
+	async convertPlainCitationsToPluggingCitations()
+	{
+		const activeLeaf = this.app.workspace.activeLeaf;
+		if (!activeLeaf) {
+			new Notice("No active document found.");
+			return;
+		}
+
+		const view = activeLeaf.view;
+		if (view.getViewType() !== 'markdown') {
+			new Notice("Active document is not a markdown file.");
+			return;
+		}
+
+		const editor = (view as any).editor;
+		const content = editor.getValue();
+		// Prompt the user to select a new version
+		const newBibleCitationVersion = await this.getBibleVersionFromUserPlainTextCitationCase();
+
+
+		if (!newBibleCitationVersion) {
+			new Notice("No version selected.");
+			return;
+		}
+
+		const activeFile = this.app.workspace.getActiveFile();
+
+		if (!activeFile) {
+			console.error('No active file found');
+			return;
+		}
+
+		let newFileContent = await convertPlainCitationsToPluggingCitationsInText(content,newBibleCitationVersion);
+
+		await this.app.vault.modify(activeFile, newFileContent);
+
+
+		//console.log(newBibleCitationVersion);
+
+	}
 
 
 	async getCitationFromUser(): Promise<string | null> {
@@ -244,12 +229,10 @@ export default class BibleCitationPlugin extends Plugin {
 
 		const editor = (view as any).editor;
 		const content = editor.getValue();
-		let updatedContent = content;
 
 
 		// Prompt the user to select a new version
-		const newBibleCitationVersion = await this.getBibleVersionFromUser();
-
+		const newBibleCitationVersion = await this.getBibleVersionFromUserChangeExistingCitationsVersion();
 
 		if (!newBibleCitationVersion) {
 			new Notice("No version selected.");
@@ -257,198 +240,35 @@ export default class BibleCitationPlugin extends Plugin {
 		}
 
 
-		const regex = />\[!bible-meditation-helper-citation]\s+\[\[([^\]]+)\]\]\n((?:>.*\n?)*)/g;
-
-		let matches = [];
-
-		let match;
-
-		while ((match = regex.exec(content)) !== null) {
-			const startIndex = match.index;
-			const endIndex = regex.lastIndex;
-
-			matches.push({
-				reference: match[1],
-				text: match[2]
-					.split('\n')
-					.filter(line => line.startsWith('>'))
-					.map(line => line.slice(1).trim())
-					.join('\n'),
-				startIndex,
-				endIndex,
-				newReference: [match[1].split("|")[1], newBibleCitationVersion].join("||") // Create a new citation reference with the new bible version requisted
-			});
-		}
-
-
-		console.log(matches)
-
-		// Note: We reverse the list to avoid breaking indices as we edit from the back to the front.
-		let newContent = content;
-		for (const result of matches.reverse()) {
-			console.log(result.newReference);
-			newContent =
-				newContent.slice(0, result.startIndex) +
-				(await (new BibleCitationGetter({ app: this.app }).getCitation(result.newReference))).citation +
-				newContent.slice(result.endIndex);
-		}
 		const activeFile = this.app.workspace.getActiveFile();
 
 		if (!activeFile) {
 			console.error('No active file found');
 			return;
 		}
+
+
+		let newContent = await changeBibleCitationVersionInText(content,newBibleCitationVersion);
+
 		await this.app.vault.modify(activeFile, newContent);
 
 		new Notice(`Bible citations updated to version: ${newBibleCitationVersion}`);
 	}
 
-	async convertPlainCitationsToPluggingCitations() {
-
-		const activeLeaf = this.app.workspace.activeLeaf;
-		if (!activeLeaf) {
-			new Notice("No active document found.");
-			return;
-		}
-
-		const view = activeLeaf.view;
-		if (view.getViewType() !== 'markdown') {
-			new Notice("Active document is not a markdown file.");
-			return;
-		}
-
-		const editor = (view as any).editor;
-		const content = editor.getValue();
-		let updatedContent = content;
+	
 
 
-		// Prompt the user to select a new version
-		const newBibleCitationVersion = await this.getBibleVersionFromUser();
-
-
-		if (!newBibleCitationVersion) {
-			new Notice("No version selected.");
-			return;
-		}
-
-		console.log(newBibleCitationVersion);
-
-		// STEP 1: Abbreviations for books (English + French, partial for demo)
-		const books = [
-			"Gen(?:esis)?", "Ex(?:odus)?", "Lev(?:iticus)?", "Rom(?:ains)?", "1 ?(Cor|Corinthiens?)", "2 ?(Cor|Corinthiens?)",
-			"Jean", "John", "Matthieu", "Matthew", "Marc", "Mark", "Luc", "Luke", "Ésaïe", "Isa(?:iah)?",
-			"Ps(?:aumes|alms)?", "Prov(?:erbes|erbs)?", "Apoc(?:alypse)?", "Rev(?:elation)?"
-		];
-
-		// STEP 2: Build a regex from those books
-		//const bookRegex = books.join("|");
-
-		// STEP 3: Main pattern - find Book + chapter:verse
-		//const bibleRegex = new RegExp(`\\b(?:${bookRegex})\\s+\\d{1,3}(?::\\d{1,3}(?:[-–]\\d{1,3})?)?\\b`, "gi");
-
-		//const regex = /\b(?:[1-3]?\s?[A-Za-zÀ-ÿ]+(?:\s?[A-Za-zÀ-ÿ]+)*)(?:\s?\d{1,3}(:\d{1,3})?(?:-\d{1,3}(:\d{1,3})?)?)\b/g;
-
-		const regex = /\b(?:[1-3]?\s?[A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿa-zà-ÿ]+)*)(?:\s+\d{1,3}(?::\d{1,3})?(?:-\d{1,3})?)\b/g;
-
-		//const regex = /\b(?:1\s?Sam|2\s?Sam|1\s?Rois|2\s?Rois|1\s?Chroniques|2\s?Chroniques|Esdras|Néhémie|Esther|Job|Psaumes?|Proverbes|Ecclésiaste|Cantique\s?des\s?Cantiques|Isaïe|Jérémie|Lamentations|Ézéchiel|Daniel|Osée|Joël|Amos|Abdias|Jonas|Michée|Nahum|Habacuc|Sophonie|Aggée|Zacharie|Malachie|Matthieu|Marc|Luc|Jean|Actes|Romains|1\s?Corinthiens|2\s?Corinthiens|Galates|Éphésiens|Philippiens|Colossiens|1\s?Thessaloniciens|2\s?Thessaloniciens|1\s?Timothée|2\s?Timothée|Tite|Philémon|Hébreux|Jacques|1\s?Pierre|2\s?Pierre|1\s?Jean|2\s?Jean|3\s?Jean|Jude|Apocalypse|Gen|Ex|Lv|Nb|Dt|Jos|Jg|Rt|1\s?S|2\s?S|1\s?R|2\s?R|1\s?Ch|2\s?Ch|Esd|Néh|Est|Jb|Ps|Pr|Eccl|Cant|Is|Jr|Lm|Ez|Dn|Os|Jl|Am|Ab|Jon|Mi|Na|Hab|So|Ag|Za|Mal|Mt|Mc|Lc|Jn|Ac|Rm|1\s?Co|2\s?Co|Ga|Ep|Ph|Co|1\s?Th|2\s?Th|1\s?Ti|2\s?Ti|Tt|Phm|He|Jc|1\s?Pi|2\s?Pi|1\s?Jn|2\s?Jn|3\s?Jn|Jd|Ap|Gn|Ex|Lv|Nb|Dt|Jos|Jg|Rt|1\s?S|2\s?S|1\s?R|2\s?R|1\s?Ch|2\s?Ch|Esd|Néh|Est|Jb|Ps|Pr|Eccl|Cant|Is|Jr|Lm|Ez|Dn|Os|Jl|Am|Ab|Jon|Mi|Na|Hab|So|Ag|Za|Mal|Mt|Mc|Lc|Jn|Ac|Rm|1\s?Co|2\s?Co|Ga|Ep|Ph|Co|1\s?Th|2\s?Th|1\s?Ti|2\s?Ti|Tt|Phm|He|Jc|1\s?Pi|2\s?Pi|1\s?Jn|2\s?Jn|3\s?Jn|Jd|Ap)\s*\d{1,3}\s*:?\s*\d{1,3}(?:\s*-\s*\d{1,3})?\b/g;
-
-		let nonCalloutTextList = [];
-
-		// The list of the new non callout text with the verse inserted if needed 
-		let newNonCalloutTextList = [];
-
-		let calloutList = findCalloutsWithIndices(content)
-
-		//console.log(calloutList);
-
-		if (calloutList.length > 0) {
-			// Add a text if it exists before the first callout 
-			nonCalloutTextList.push(content.slice(0, calloutList[0].startIndex - 1))
-
-			// Split my text to separate the callouts from the normal text 
-			for (var compteur = 1; compteur < calloutList.length; compteur++) {
-				nonCalloutTextList.push(content.slice(calloutList[compteur - 1].endIndex, calloutList[compteur].startIndex))
-			}
-
-			// Add a text if its exists after the last callout 
-			nonCalloutTextList.push(content.slice(calloutList[calloutList.length - 1].endIndex))
-
-		}
-		else {
-			nonCalloutTextList.push(content)
-		}
-
-
-		var newContentNonCalloutTextList = [];
-
-
-		for (var nonCalloutText of nonCalloutTextList) {
-			// empty the list 
-			newContentNonCalloutTextList = [];
-
-			for (var line of nonCalloutText.split("\n")) {
-				// If it is not a line of the definition of a callout or not in a callout 
-				if (!line.startsWith(line.startsWith(">"))) {
-					if (line.match(regex)) {
-						let reference = [line, newBibleCitationVersion].join("||");
-						try {
-							newContentNonCalloutTextList.push((await (new BibleCitationGetter({ app: this.app })).getCitation(reference)).citation)
-
-						}
-						// In the case it is not a correct citation
-						catch {
-							newContentNonCalloutTextList.push(line)
-						}
-					}
-					else {
-						newContentNonCalloutTextList.push(line)
-					}
-				}
-				else {
-
-					newContentNonCalloutTextList.push(line);
-				}
-			}
-
-			newNonCalloutTextList.push(newContentNonCalloutTextList.join("\n"))
-
-		}
-
-
-		console.log("nonCalloutTextList", nonCalloutTextList)
-		console.log("newNonCalloutTextList", newNonCalloutTextList)
-
-
-		// Recreate the content of the file now that we have added the verse
-		// I interleave the callout text and the non callout text back
-		let newFileContent = newNonCalloutTextList[0] ?? '';
-
-		newFileContent = newFileContent + "\n\n";
-
-		for (var i = 0; i < calloutList.length; i++) {
-			newFileContent += calloutList[i].text + "\n\n";
-			newFileContent += newNonCalloutTextList[i + 1] + "\n\n";
-		}
-
-		console.log("newFileContent", newFileContent)
-
-
-		const activeFile = this.app.workspace.getActiveFile();
-
-		if (!activeFile) {
-			console.error('No active file found');
-			return;
-		}
-		await this.app.vault.modify(activeFile, newFileContent);
-
+	async getBibleVersionFromUserChangeExistingCitationsVersion(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve);
+			prompt.open();
+		});
 
 	}
 
-
-
-	async getBibleVersionFromUser(): Promise<string | null> {
+	async getBibleVersionFromUserPlainTextCitationCase(): Promise<string | null> {
 		return new Promise((resolve) => {
-			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve);
+			const prompt = new BibleCitationChangePlainTextCitation(this.app, resolve);
 			prompt.open();
 		});
 

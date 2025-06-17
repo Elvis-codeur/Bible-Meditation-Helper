@@ -3,7 +3,8 @@ import OpenAI from 'openai';
 import { Translate } from '@google-cloud/translate/build/src/v2';
 import axios from 'axios';
 import { requestUrl, RequestUrlResponse } from 'obsidian';
-import { OpenAIModel, TranslationModel, TranslationService, TranslationSettings } from './type_definitions';
+import { MODEL_TOKEN_LIMITS, OpenAIModel, TranslationModel, TranslationService, TranslationSettings } from './type_definitions';
+import { chunkTextByTokens } from './text_manipulations';
 
 
 
@@ -89,6 +90,8 @@ export class TranslateNotes {
     ): Promise<string> {
 
 
+        let gptDefaultModel = 'gpt-4o';
+
         const activeFile = this.app.workspace.getActiveFile();
         const inputFileName = activeFile ? activeFile.name : 'unknown-file';
 
@@ -102,11 +105,11 @@ export class TranslateNotes {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: model || 'gpt-4-turbo-preview',
+                    model: model || gptDefaultModel,
                     messages: [
                         {
                             role: 'system',
-                            content: `You are a professional translator. Translate the following text to ${targetLang} while maintaining the original formatting and markdown syntax. ${customPrompt || ''}`
+                            content: `You are a professional translator. Translate the following text to ${targetLang} while maintaining the original formatting and markdown syntax. ${customPrompt} || ''}`
                         },
                         {
                             role: 'user',
@@ -128,7 +131,7 @@ export class TranslateNotes {
                 translation_id: crypto.randomUUID(),
                 timestamp: new Date().toISOString(),
                 model: {
-                    model_name: model || 'gpt-4-turbo-preview',
+                    model_name: model || gptDefaultModel,
                     api_base: 'https://api.openai.com/v1',
                     organization: null // or your org id if applicable
                 },
@@ -208,7 +211,7 @@ export class TranslateNotes {
         return matches;
     };
 
-    
+
 
 
 
@@ -225,21 +228,39 @@ export class TranslateNotes {
             // Process matches in reverse order to handle nested links correctly
             matcheList.forEach((match, index) => {
                 const placeholder = `[[WIKILINK_${index}]]`; // More unique placeholder
-                processedContent = processedContent.slice(0, match.beginIndex) + 
-                                 placeholder + 
-                                 processedContent.slice(match.endIndex + 1);
+                processedContent = processedContent.slice(0, match.beginIndex) +
+                    placeholder +
+                    processedContent.slice(match.endIndex + 1);
                 linksRecoveryMap.set(placeholder, match.fullText);
             });
 
             //console.log(processedContent)
 
-            // Translate the processed content
-            let translatedContent = await this.translateWithOpenAI(
-                processedContent, 
-                targetLang, 
-                customPrompt, 
-                model as OpenAIModel
-            );
+
+
+
+            const selectedModel = model || 'gpt-4o' as OpenAIModel;
+            const maxTokens = MODEL_TOKEN_LIMITS[selectedModel];
+            const chunkList = chunkTextByTokens(processedContent, maxTokens, 500);
+
+            console.log("translation initiated")
+            let translatedContent = "";
+
+                // Translate the processed content
+            for (var chunk of chunkList) {
+                
+                let translatedChunck = await this.translateWithOpenAI(
+                    chunk,
+                    targetLang,
+                    customPrompt,
+                    model as OpenAIModel
+                );
+                translatedContent += translatedChunck;
+            }
+
+
+            console.log("translation finished")
+
 
             // Restore wiki links in reverse order
             Array.from(linksRecoveryMap.entries()).forEach(([placeholder, originalLink]) => {
@@ -247,7 +268,7 @@ export class TranslateNotes {
             });
 
             // Create new file with translated content
-            const newFileName = `${file.basename}_${targetLang}.${file.extension}`;
+            const newFileName = `${file.parent?.path}/${file.basename}_${targetLang}.${file.extension}`;
             await this.app.vault.create(newFileName, translatedContent);
 
         } catch (error) {
