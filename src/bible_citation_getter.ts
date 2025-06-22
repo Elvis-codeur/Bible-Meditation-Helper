@@ -538,6 +538,7 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
                 }
                 catch(error){
                     console.log(error);
+                    result.push(line);
                 }
                 
             }
