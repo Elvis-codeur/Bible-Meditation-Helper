@@ -1,6 +1,7 @@
-import { pluginCallout, defaultCitationFolder } from "./constants";
+import { pluginCallout, defaultCitationFolder, mapBibleBookAbbrevToBibleBooks, mapBibleVersionToLanguage, mapBibleBookToNumericalOrder } from "./constants";
 import { Notice, TFile } from "obsidian";
 import { CalloutBlock } from "./type_definitions";
+import { findClosestBookName } from "./text_manipulations";
 
 const path = require("path");
 
@@ -25,19 +26,26 @@ export default class BibleCitationGetter {
     }
 
 
-
-
-
-
     async getCitation(text: string): Promise<{ citation: string, result: any }> {
 
-        let bible_version = text.split("||")[1];
+        console.log("getCitation -- ", text)
+
+        let inputTextSplited = text.split("||");
+        let bible_version = "";
+        if (inputTextSplited.length > 1) {
+            bible_version = inputTextSplited[1];
+
+        }
+        else {
+            new Notice("Aucune version de la Bible n'a été choisi", 3000);
+            throw Error("Aucune version de la Bible n'a été choisi")
+        }
 
 
 
         // Parse the citation
         // Remove all sapce to facilitate parsing 
-        let citation = text.split("||")[0].replace(" ", "").toLowerCase().replace("\n", "").replace("\r", "").split(":");
+        let citation = inputTextSplited[0].replace(" ", "").toLowerCase().replace("\n", "").replace("\r", "").split(":");
         let book_and_chapter = citation[0];
 
         let book = "";
@@ -60,13 +68,39 @@ export default class BibleCitationGetter {
         //console.log("Verse inf: " + verse_indice_inf);
         //console.log("Verse sup: " + verse_indice_sup);
 
-        book = this.mapbookToBookNameInFolder(book);
-        book = this.mapBookToOrder(book) + "_" + book;
+
+
+        let bookNameInFolder = this.mapbookToBookNameInFolder(book);
+
+        // If the book is not found, use levenshtein function to search for the neearest one 
+
+        if (bookNameInFolder == "Unknown") {
+            // Find the closes Book 
+            let Levenshtein_Book = findClosestBookName(book, [...mapBibleBookAbbrevToBibleBooks.keys()]) || ""
+
+            console.log("Levenshtein function used ", book, Levenshtein_Book)
+            book = Levenshtein_Book;
+
+
+            if (book) {
+
+                bookNameInFolder = this.mapbookToBookNameInFolder(book);
+            }
+            else {
+
+                new Notice(`The book is "${book}" not in the Bible. Check for the spelling perhaps`, 1e4)
+                throw Error(`The book is "${book}" not in the Bible. Check for the spelling perhaps`)
+
+            }
+
+        }
+
+        bookNameInFolder = this.mapBookToOrder(bookNameInFolder) + "_" + bookNameInFolder;
 
 
         // Read the chapter containing the citation
 
-        let result = await this.readCitationOnDrive(book.replace(" ", ""), parseInt(chapter),
+        let result = await this.readCitationOnDrive(bookNameInFolder.replace(" ", ""), parseInt(chapter),
             parseInt(verse_indice_inf),
             parseInt(verse_indice_sup), bible_version);
 
@@ -83,7 +117,7 @@ export default class BibleCitationGetter {
         let citation_indice_begin = parseInt(verse_indice_inf);
         let citation_indice_end = 0;
 
-        console.log(book_and_chapter);
+        //console.log(book_and_chapter);
 
         if (verse_indice_sup == "") {
             if (citation[1].trim().at(-1) == "-") {
@@ -105,7 +139,7 @@ export default class BibleCitationGetter {
 
         let verses_list = [];
 
-        console.log(chapter_verses);
+        //console.log(chapter_verses);
 
 
         for (let compteur = 0; compteur < chapter_verses.length; compteur++) {
@@ -350,392 +384,26 @@ export default class BibleCitationGetter {
     mapbookToBookNameInFolder(book: string): string {
 
         //console.log("Book given : " + book);
-        const abbreviations: { [key: string]: string } = {
-            "gen": "Genesis",
-            "ex": "Exodus",
-            "lev": "Leviticus",
-            "num": "Numbers",
-            "deut": "Deuteronomy",
-            "josh": "Joshua",
-            "judg": "Judges",
-            "ruth": "Ruth",
 
-            "1sam": "I_Samuel",
-            "isam": "I_Samuel",
-            "2sam": "II_Samuel",
-            "iisam": "II_Samuel",
-            "1kgs": "I_Kings",
-            "ikgs": "I_Kings",
-            "2kgs": "II_Kings",
-            "iikgs": "II_Kings",
-            "1chr": "I_Chronicles",
-            "ichr": "I_Chronicles",
-            "2chr": "II_Chronicles",
-            "iichr": "II_Chronicles",
+        return mapBibleBookAbbrevToBibleBooks.get(book.replace(" ", "").trim()) || "Unknown";
 
-            "ezra": "Ezra",
-            "neh": "Nehemiah",
-            "esth": "Esther",
-            "job": "Job",
-            "ps": "Psalms",
-            "prov": "Proverbs",
-            "eccl": "Ecclesiastes",
-            "song": "Song_of_Solomon",
-            "isa": "Isaiah",
-            "jer": "Jeremiah",
-            "lam": "Lamentations",
-            "ezek": "Ezekiel",
-            "dan": "Daniel",
-            "hos": "Hosea",
-            "joel": "Joel",
-            "amos": "Amos",
-            "obad": "Obadiah",
-            "jonah": "Jonah",
-            "mic": "Micah",
-            "nah": "Nahum",
-            "hab": "Habakkuk",
-            "zeph": "Zephaniah",
-            "hag": "Haggai",
-            "zech": "Zechariah",
-            "mal": "Malachi",
-            "matt": "Matthew",
-            "mark": "Mark",
-            "luke": "Luke",
-            "john": "John",
-            "acts": "Acts",
-            "rom": "Romans",
-
-            "1cor": "I_Corinthians",
-            "icor": "I_Corinthians",
-            "2cor": "II_Corinthians",
-            "iicor": "II_Corinthians",
-
-            "gal": "Galatians",
-            "eph": "Ephesians",
-            "phil": "Philippians",
-            "col": "Colossians",
-
-            "1thess": "I_Thessalonians",
-            "ithess": "I_Thessalonians",
-            "2thess": "II_Thessalonians",
-            "iithess": "II_Thessalonians",
-            "1tim": "I_Timothy",
-            "itim": "I_Timothy",
-            "2tim": "II_Timothy",
-            "iitim": "II_Timothy",
-
-            "titus": "Titus",
-            "phlm": "Philemon",
-            "heb": "Hebrews",
-            "jas": "James",
-
-            "1pet": "I_Peter",
-            "ipet": "I_Peter",
-            "2pet": "II_Peter",
-            "iipet": "II_Peter",
-            "1john": "I_John",
-            "ijohn": "I_John",
-            "2john": "II_John",
-            "iijohn": "II_John",
-            "3john": "III_John",
-            "iiijohn": "III_John",
-
-            "jude": "Jude",
-            "rev": "Revelation_of_John",
-
-            "genèse": "Genesis",
-            "exode": "Exodus",
-            "lévitique": "Leviticus",
-            "nombres": "Numbers",
-            "deutéronome": "Deuteronomy",
-            "josué": "Joshua",
-            "juges": "Judges",
-            "1samuel": "I_Samuel",
-            "isamuel": "I_Samuel",
-
-            "2samuel": "II_Samuel",
-            "iisamuel": "II_Samuel",
-
-            "1rois": "I_Kings",
-            "irois": "I_Kings",
-            "2rois": "II_Kings",
-            "iirois": "II_Kings",
-
-            "1chroniques": "I_Chronicles",
-            "ichroniques": "I_Chronicles",
-            "2chroniques": "II_Chronicles",
-            "iichroniques": "II_Chronicles",
-
-            "esdras": "Ezra",
-            "néhémie": "Nehemiah",
-            "esther": "Esther",
-            "psaumes": "Psalms",
-            "proverbes": "Proverbs",
-            "ecclésiaste": "Ecclesiastes",
-            "cantique": "Song_of_Solomon",
-            "ésaïe": "Isaiah",
-            "jérémie": "Jeremiah",
-            "lamentations": "Lamentations",
-            "ézéchiel": "Ezekiel",
-            "daniel": "Daniel",
-            "osée": "Hosea",
-            "joël": "Joel",
-            "abdias": "Obadiah",
-            "jonas": "Jonah",
-            "michée": "Micah",
-            "nahum": "Nahum",
-            "habacuc": "Habakkuk",
-            "sophonie": "Zephaniah",
-            "aggée": "Haggai",
-            "zacharie": "Zechariah",
-            "malachie": "Malachi",
-            "matthieu": "Matthew",
-            "marc": "Mark",
-            "luc": "Luke",
-            "jean": "John",
-            "actes": "Acts",
-            "romains": "Romans",
-
-            "1corinthiens": "I_Corinthians",
-            "icorinthiens": "I_Corinthians",
-            "2corinthiens": "II_Corinthians",
-            "iicorinthiens": "II_Corinthians",
-
-            "galates": "Galatians",
-            "éphésiens": "Ephesians",
-            "philippiens": "Philippians",
-            "colossiens": "Colossians",
-
-            "1thessaloniciens": "I_Thessalonians",
-            "ithessaloniciens": "I_Thessalonians",
-            "2thessaloniciens": "II_Thessalonians",
-            "iithessaloniciens": "II_Thessalonians",
-            "1timothée": "I_Timothy",
-            "itimothée": "I_Timothy",
-            "2timothée": "II_Timothy",
-            "iitimothée": "II_Timothy",
-
-
-            "tite": "Titus",
-            "philémon": "Philemon",
-            "hébreux": "Hebrews",
-            "jacques": "James",
-
-            "1pierre": "I_Peter",
-            "ipierre": "I_Peter",
-            "2pierre": "II_Peter",
-            "iipierre": "II_Peter",
-            "1jean": "I_John",
-            "ijean": "I_John",
-            "2jean": "II_John",
-            "iijean": "II_John",
-            "3jean": "III_John",
-            "iiijean": "III_John",
-
-            "apocalypse": "Revelation_of_John",
-
-
-            "genesis": "Genesis",
-            "exodus": "Exodus",
-            "leviticus": "Leviticus",
-            "numbers": "Numbers",
-            "deuteronomy": "Deuteronomy",
-            "joshua": "Joshua",
-            "judges": "Judges",
-            //"ruth": "Ruth",
-            //"1samuel": "I_Samuel",
-            //"2samuel": "II_Samuel",
-
-            "1kings": "I_Kings",
-            "ikings": "I_Kings",
-            "2kings": "II_Kings",
-            "iikings": "II_Kings",
-            "1chronicles": "I_Chronicles",
-            "ichronicles": "I_Chronicles",
-            "2chronicles": "II_Chronicles",
-            "iichronicles": "II_Chronicles",
-
-            //"ezra": "Ezra",
-            "nehemiah": "Nehemiah",
-            //"esther": "Esther",
-            //"job": "Job",
-            "psalms": "Psalms",
-            "proverbs": "Proverbs",
-            "ecclesiastes": "Ecclesiastes",
-            "songofsolomon": "Song_of_Solomon",
-            "isaiah": "Isaiah",
-            "jeremiah": "Jeremiah",
-            //"lamentations": "Lamentations",
-            "ezekiel": "Ezekiel",
-            //"daniel": "Daniel",
-            "hosea": "Hosea",
-            //"joel": "Joel",
-            //"amos": "Amos",
-            "obadiah": "Obadiah",
-            //"jonah": "Jonah",
-            "micah": "Micah",
-            //"nahum": "Nahum",
-            "habakkuk": "Habakkuk",
-            "zephaniah": "Zephaniah",
-            "haggai": "Haggai",
-            "zechariah": "Zechariah",
-            "malachi": "Malachi",
-            "matthew": "Matthew",
-            //"mark": "Mark",
-            //"luke": "Luke",
-            //"john": "John",
-            //"acts": "Acts",
-            "romans": "Romans",
-
-            "1corinthians": "I_Corinthians",
-            "icorinthians": "I_Corinthians",
-            "2corinthians": "II_Corinthians",
-            "iicorinthians": "II_Corinthians",
-
-            "galatians": "Galatians",
-            "ephesians": "Ephesians",
-            "philippians": "Philippians",
-            "colossians": "Colossians",
-
-            "1thessalonians": "I_Thessalonians",
-            "ithessalonians": "I_Thessalonians",
-            "2thessalonians": "II_Thessalonians",
-            "iithessalonians": "II_Thessalonians",
-            "1timothy": "I_Timothy",
-            "itimothy": "I_Timothy",
-            "2timothy": "II_Timothy",
-            "iitimothy": "II_Timothy",
-
-            //"titus": "Titus",
-            "philemon": "Philemon",
-            "hebrews": "Hebrews",
-            "james": "James",
-
-            "1peter": "I_Peter",
-            "ipeter": "I_Peter",
-            "2peter": "II_Peter",
-            "iipeter": "II_Peter",
-
-            "revelation": "Revelation_of_John"
-
-        };
-        return abbreviations[book.replace(" ", "").trim()] || "Unknown";
     }
+
 
 
     mapBibleVersionToLanguage(bible_version: string): string {
         console.log("Bible version: == == == " + bible_version);
-        const language: { [key: string]: string } = {
-            "ESV": "en",
-            "NIV": "en",
-            "KJV": "en",
-            "NLT": "en",
-            "NRSV": "en",
-            "RSV": "en",
-            "NASB": "en",
-            "ASV": "en",
-            "WEB": "en",
-            "BBE": "en",
-            "DARBY": "en",
-            "HNV": "en",
-            "WBT": "en",
-            "WNT": "en",
-            "YLT": "en",
-            "RVR1960": "es",
-            "LBLA": "es",
-            "NVI": "es",
-            "RVR1977": "es",
-            "RVR1995": "es",
-            "TLA": "es",
-            //"NVI-PT": "pt",
-            "ARC": "pt",
-            "ARA": "pt",
-            "NVI-PT": "pt",
-            "LSG": "fr",
-            "LSG10": "fr",
-            "NEG": "fr",
-            "PDV": "fr",
-            "BDS": "fr"
-        };
-        return language[bible_version.toUpperCase().trim() as keyof typeof language] || "None";
+
+        return mapBibleVersionToLanguage.get(bible_version.toUpperCase().trim()) || "None";
 
     }
 
 
-
-    mapBookToOrder(book: string): string {
-        const bookOrder: { [key: string]: number } = {
-            "Genesis": 0,
-            "Exodus": 1,
-            "Leviticus": 2,
-            "Numbers": 3,
-            "Deuteronomy": 4,
-            "Joshua": 5,
-            "Judges": 6,
-            "Ruth": 7,
-            "I_Samuel": 8,
-            "II_Samuel": 9,
-            "I_Kings": 10,
-            "II_Kings": 11,
-            "I_Chronicles": 12,
-            "II_Chronicles": 13,
-            "Ezra": 14,
-            "Nehemiah": 15,
-            "Esther": 16,
-            "Job": 17,
-            "Psalms": 18,
-            "Proverbs": 19,
-            "Ecclesiastes": 20,
-            "Song_of_Solomon": 21,
-            "Isaiah": 22,
-            "Jeremiah": 23,
-            "Lamentations": 24,
-            "Ezekiel": 25,
-            "Daniel": 26,
-            "Hosea": 27,
-            "Joel": 28,
-            "Amos": 29,
-            "Obadiah": 30,
-            "Jonah": 31,
-            "Micah": 32,
-            "Nahum": 33,
-            "Habakkuk": 34,
-            "Zephaniah": 35,
-            "Haggai": 36,
-            "Zechariah": 37,
-            "Malachi": 38,
-            "Matthew": 39,
-            "Mark": 40,
-            "Luke": 41,
-            "John": 42,
-            "Acts": 43,
-            "Romans": 44,
-            "I_Corinthians": 45,
-            "II_Corinthians": 46,
-            "Galatians": 47,
-            "Ephesians": 48,
-            "Philippians": 49,
-            "Colossians": 50,
-            "I_Thessalonians": 51,
-            "II_Thessalonians": 52,
-            "I_Timothy": 53,
-            "II_Timothy": 54,
-            "Titus": 55,
-            "Philemon": 56,
-            "Hebrews": 57,
-            "James": 58,
-            "I_Peter": 59,
-            "II_Peter": 60,
-            "I_John": 61,
-            "II_John": 62,
-            "III_John": 63,
-            "Jude": 64,
-            "Revelation_of_John": 65
-        };
+    mapBookToOrder(book: string) {
 
         let chapterString = "";
 
-        let chapterNUmber = (bookOrder[book] ?? -1) + 1;
+        let chapterNUmber = (mapBibleBookToNumericalOrder.get(book) ?? -1) + 1;
 
         if (chapterNUmber < 10) {
             chapterString = "0" + chapterNUmber.toString();
@@ -806,25 +474,25 @@ function findCalloutsWithIndices(markdown: string): CalloutBlock[] {
     return results;
 }
 
-function findCallouts(content:string) {
-  const calloutRegex = /^> \[!(\w+)\][^\n]*([\s\S]*?)(?=\n(?!> )|$)/gm;
-  let match;
-  const results = [];
+function findCallouts(content: string) {
+    const calloutRegex = /^> \[!(\w+)\][^\n]*([\s\S]*?)(?=\n(?!> )|$)/gm;
+    let match;
+    const results = [];
 
-  while ((match = calloutRegex.exec(content)) !== null) {
-    const fullMatch = match[0];
-    const startIndex = match.index;
-    const endIndex = startIndex + fullMatch.length;
+    while ((match = calloutRegex.exec(content)) !== null) {
+        const fullMatch = match[0];
+        const startIndex = match.index;
+        const endIndex = startIndex + fullMatch.length;
 
-    results.push({
-      calloutType: match[1],          // e.g. NOTE, WARNING, etc.
-      text: fullMatch.trim(),
-      startIndex: startIndex,
-      endIndex: endIndex
-    });
-  }
+        results.push({
+            calloutType: match[1],          // e.g. NOTE, WARNING, etc.
+            text: fullMatch.trim(),
+            startIndex: startIndex,
+            endIndex: endIndex
+        });
+    }
 
-  return results
+    return results
 }
 
 
@@ -857,22 +525,27 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
 
     let result: string[] = [];
 
-    for(var line of content.split("\n"))
-    {
-        if (!line.startsWith(">"))
-        {
-            if(line.match(BibleCitaionRegex))
-            {
-                console.log(line)
-                result.push(await ((await new 
-                    BibleCitationGetter({app:this.app}).getCitation([line,newBibleCitationVersion].join("||"))).citation))
+    for (var line of content.split("\n")) {
+        if (!(line.startsWith(">") || line.startsWith("-") || line.startsWith("+"))) {
+            if (line.match(BibleCitaionRegex)) {
+
+                try {
+                    console.log(line)
+
+                    result.push(await ((await new
+                        BibleCitationGetter({ app: this.app }).getCitation([line, newBibleCitationVersion].join("||"))).citation))
+
+                }
+                catch(error){
+                    console.log(error);
+                }
+                
             }
-            else{
+            else {
                 result.push(line)
             }
         }
-        else
-        {
+        else {
             result.push(line)
         }
     }
