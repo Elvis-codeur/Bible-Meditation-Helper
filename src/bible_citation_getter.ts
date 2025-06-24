@@ -2,6 +2,7 @@ import { pluginCallout, defaultCitationFolder, mapBibleBookAbbrevToBibleBooks, m
 import { Notice, TFile } from "obsidian";
 import { CalloutBlock } from "./type_definitions";
 import { findClosestBookName } from "./text_manipulations";
+import exp from "constants";
 
 const path = require("path");
 
@@ -646,20 +647,19 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
 }
 
 
-export async function changeBibleCitationVersionInText(content: string, newBibleCitationVersion: string) {
-
+export async function extractBibleCitations(text: string) {
     const regex = />\[!bible-meditation-helper-citation]\s+\[\[([^\]]+)\]\]\n((?:>.*\n?)*)/g;
 
     let matches = [];
-
     let match;
 
-    while ((match = regex.exec(content)) !== null) {
+    while ((match = regex.exec(text)) !== null) {
         const startIndex = match.index;
         const endIndex = regex.lastIndex;
 
         matches.push({
             reference: match[1],
+            fullText: match[0], // <-- This now includes the whole matched block
             text: match[2]
                 .split('\n')
                 .filter(line => line.startsWith('>'))
@@ -667,20 +667,30 @@ export async function changeBibleCitationVersionInText(content: string, newBible
                 .join('\n'),
             startIndex,
             endIndex,
-            newReference: [match[1].split("|")[1], newBibleCitationVersion].join("||") // Create a new citation reference with the new bible version requisted
         });
     }
 
+    // Sort matches by beginIndex in reverse order to handle nested links correctly
+    matches.sort((a, b) => b.startIndex - a.startIndex);
 
-    console.log(matches)
+    return matches;
+}
+
+
+export async function changeBibleCitationVersionInText(content: string, newBibleCitationVersion: string) {
+
+
+    let matches = await extractBibleCitations(content);
+
 
     // Note: We reverse the list to avoid breaking indices as we edit from the back to the front.
     let newContent = content;
     for (const result of matches.reverse()) {
-        console.log(result.newReference);
-        newContent =
-            newContent.slice(0, result.startIndex) +
-            (await (new BibleCitationGetter({ app: this.app }).getCitation(result.newReference))).citation +
+
+        let newReference = [result.reference.split("|")[1], newBibleCitationVersion].join("||") // Create a new citation reference with the new bible version requisted
+
+        newContent = newContent.slice(0, result.startIndex) +
+            (await (new BibleCitationGetter({ app: this.app }).getCitation(newReference))).citation +
             newContent.slice(result.endIndex);
     }
 
