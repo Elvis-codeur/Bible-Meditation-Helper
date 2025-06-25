@@ -13,7 +13,7 @@ class BibleCitationVersionChangePromptModal extends Modal {
 		const { contentEl } = this;
 
 		// Title
-		contentEl.createEl("h2", { text: "Enter the new Bible version : Change the version of your Bible citations in the text"  });
+		contentEl.createEl("h2", { text: "Enter the new Bible version : Change the version of your Bible citations in the text" });
 
 		// Description
 		const description = contentEl.createEl("p", {
@@ -249,11 +249,14 @@ class BibleCitationPromptModal extends Modal {
 
 
 class TranslationModal extends Modal {
+	private bibleVersions = ['LSG10', 'ESV', 'KJV'];
+
 	private result: {
 		service: TranslationService;
 		targetLang: string;
 		customPrompt?: string;
 		model?: TranslationModel;
+		bibleVersion:string;
 	};
 
 	private onSubmit: (result: {
@@ -261,9 +264,12 @@ class TranslationModal extends Modal {
 		targetLang: string;
 		customPrompt?: string;
 		openAIModel?: TranslationModel;
+		bibleVersion:string;
+
 	}) => void;
 
 	constructor(app: App, onSubmit: (result: {
+		bibleVersion: string;
 		service: TranslationService;
 		targetLang: string;
 		customPrompt?: string;
@@ -361,6 +367,36 @@ class TranslationModal extends Modal {
 		createFormGroup('Target Language', langInput.inputEl);
 
 
+		// Bible version checkbox and dropdown
+		const bibleVersionCheckbox = contentEl.createEl('input', {
+			type: 'checkbox'
+		});
+		bibleVersionCheckbox.setAttr('style', 'margin-right: 8px;');
+
+		const bibleVersionLabel = contentEl.createDiv();
+		bibleVersionLabel.setAttr('style', 'display: flex; align-items: center; margin-bottom: 8px;');
+		bibleVersionLabel.appendChild(bibleVersionCheckbox);
+		bibleVersionLabel.createEl('span', { text: 'Include Bible Version' });
+
+		contentEl.appendChild(bibleVersionLabel);
+
+		// Bible version dropdown (hidden by default)
+		const bibleVersionSelect = contentEl.createEl('select', {
+			attr: { style: 'padding: 6px; font-size: 14px; width: 100%; margin-bottom: 16px;' }
+		});
+		this.bibleVersions.forEach(version => {
+			bibleVersionSelect.createEl('option', { text: version, value: version });
+		});
+		bibleVersionSelect.style.display = 'none';
+		contentEl.appendChild(bibleVersionSelect);
+
+		// Toggle visibility on checkbox change
+		bibleVersionCheckbox.addEventListener('change', () => {
+			bibleVersionSelect.style.display = bibleVersionCheckbox.checked ? 'block' : 'none';
+		});
+
+
+
 		// Prompt selector
 		contentEl.createEl('label', { text: 'Choose Saved Prompt' });
 		const promptSelect = contentEl.createEl('select');
@@ -425,7 +461,8 @@ class TranslationModal extends Modal {
 					service,
 					targetLang,
 					customPrompt: promptInput.getValue(),
-					model: modelsByService[service].length > 0 ? model : undefined
+					model: modelsByService[service].length > 0 ? model : undefined,
+					bibleVersion: bibleVersionCheckbox.checked ? bibleVersionSelect.value : ""
 				};
 				this.onSubmit(this.result);
 				this.close();

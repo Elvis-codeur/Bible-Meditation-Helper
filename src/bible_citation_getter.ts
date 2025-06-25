@@ -682,15 +682,16 @@ export async function changeBibleCitationVersionInText(content: string, newBible
 
     let matches = await extractBibleCitations(content);
 
+    console.log(matches);
 
     // Note: We reverse the list to avoid breaking indices as we edit from the back to the front.
     let newContent = content;
-    for (const result of matches.reverse()) {
+    for (const result of matches) {
 
         let newReference = [result.reference.split("|")[1], newBibleCitationVersion].join("||") // Create a new citation reference with the new bible version requisted
 
-        newContent = newContent.slice(0, result.startIndex) +
-            (await (new BibleCitationGetter({ app: this.app }).getCitation(newReference))).citation +
+        newContent = newContent.slice(0, result.startIndex) +"\n"+
+            (await (new BibleCitationGetter({ app: this.app }).getCitation(newReference))).citation + "\n"+
             newContent.slice(result.endIndex);
     }
 
