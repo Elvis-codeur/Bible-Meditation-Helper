@@ -5,7 +5,7 @@ import axios from 'axios';
 import { requestUrl, RequestUrlResponse } from 'obsidian';
 import { MODEL_TOKEN_LIMITS, OpenAIModel, TranslationModel, TranslationService, TranslationSettings } from './type_definitions';
 import { chunkTextByTokens } from './text_manipulations';
-import { extractBibleCitations } from './bible_citation_getter';
+import { changeBibleCitationVersionInText, extractBibleCitations } from './bible_citation_getter';
 import { text } from 'stream/consumers';
 
 
@@ -217,7 +217,7 @@ export class TranslateNotes {
 
 
 
-    async translateNote(file: TFile, service: TranslationService, targetLang: string, customPrompt?: string, model?: TranslationModel): Promise<void> {
+    async translateNote(file: TFile, service: TranslationService, targetLang: string,bibleVersionCitation:string, customPrompt?: string, model?: TranslationModel,): Promise<void> {
         try {
             this.validateApiKey(service);
 
@@ -236,9 +236,8 @@ export class TranslateNotes {
             const BibleCitationRecoveryMap = new Map<string, string>();
 
             bibleCitations.forEach((match,index)=>{
-                const placeholder = `BIBLE_CITATION_${index}`
-                processedContent =  processedContent.slice(0,match.startIndex) + 
-                placeholder +" "+ 
+                const placeholder = `<<BIBLE_CITATION_${index}>>`
+                processedContent =  processedContent.slice(0,match.startIndex) + `${placeholder}` +
                 processedContent.slice(match.endIndex + 1);
                 BibleCitationRecoveryMap.set(placeholder,match.fullText)
             })
@@ -255,14 +254,14 @@ export class TranslateNotes {
             matcheList.forEach((match, index) => {
                 const placeholder = `[[WIKILINK_${index}]]`; // More unique placeholder
                 processedContent = processedContent.slice(0, match.beginIndex) +
-                    placeholder +
+                    ` ${placeholder} ` +
                     processedContent.slice(match.endIndex + 1);
                 linksRecoveryMap.set(placeholder, match.fullText);
             });
             
-
+            
             //console.log(processedContent)
-
+            
             const selectedModel = model || 'gpt-4o' as OpenAIModel;
             const maxTokens = MODEL_TOKEN_LIMITS[selectedModel];
 
@@ -273,9 +272,11 @@ export class TranslateNotes {
 
             new Notice("Translation initiated",5e3)
 
-            console.log("chunkList",chunkList)
+            //console.log("chunkList",chunkList)
 
-            let translatedContent = "";
+            let translatedContent = processedContent;
+
+            /*
 
                 // Translate the processed content
             for (var chunk of chunkList) {
@@ -289,14 +290,22 @@ export class TranslateNotes {
                 translatedContent += translatedChunck;
             }
 
+            */
+
 
             console.log("translation finished")
 
             new Notice("Translation finished",5e3)
 
-        
+            console.log(bibleVersionCitation);
 
-            // Restore wiki links in reverse order
+            console.log(translatedContent);
+
+            
+           //let translatedContent = processedContent;
+
+
+           // Restore wiki links in reverse order
             Array.from(linksRecoveryMap.entries()).forEach(([placeholder, originalLink]) => {
                 translatedContent = translatedContent.replace(placeholder, originalLink);
             });
@@ -308,8 +317,19 @@ export class TranslateNotes {
                 translatedContent = translatedContent.replace(placeholder,bibleCitation);
             });
 
+
+
+            // Change the version of the bible citations in the document if asked 
+            if(bibleVersionCitation != "")
+            {
+                translatedContent = await changeBibleCitationVersionInText(translatedContent,bibleVersionCitation);
+            }
+
+            console.log(translatedContent)
+
             // Create new file with translated content
             const newFileName = `${file.parent?.path}/${file.basename}_${targetLang}.${file.extension}`;
+
             await this.app.vault.create(newFileName, translatedContent);
 
 

@@ -130,6 +130,7 @@ export default class BibleCitationPlugin extends Plugin {
 					activeFile,
 					result.service,
 					result.targetLang,
+					result.bibleVersion,
 					result.customPrompt,
 					result.iaModel
 				);
