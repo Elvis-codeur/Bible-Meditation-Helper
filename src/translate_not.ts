@@ -274,9 +274,9 @@ export class TranslateNotes {
 
             //console.log("chunkList",chunkList)
 
-            let translatedContent = processedContent;
+            let translatedContent = "";
 
-            /*
+            
 
                 // Translate the processed content
             for (var chunk of chunkList) {
@@ -290,7 +290,7 @@ export class TranslateNotes {
                 translatedContent += translatedChunck;
             }
 
-            */
+            
 
 
             console.log("translation finished")
@@ -299,7 +299,7 @@ export class TranslateNotes {
 
             console.log(bibleVersionCitation);
 
-            console.log(translatedContent);
+            //console.log(translatedContent);
 
             
            //let translatedContent = processedContent;
@@ -325,7 +325,7 @@ export class TranslateNotes {
                 translatedContent = await changeBibleCitationVersionInText(translatedContent,bibleVersionCitation);
             }
 
-            console.log(translatedContent)
+            //console.log(translatedContent)
 
             // Create new file with translated content
             const newFileName = `${file.parent?.path}/${file.basename}_${targetLang}.${file.extension}`;
