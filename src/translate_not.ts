@@ -254,7 +254,7 @@ export class TranslateNotes {
             matcheList.forEach((match, index) => {
                 const placeholder = `[[WIKILINK_${index}]]`; // More unique placeholder
                 processedContent = processedContent.slice(0, match.beginIndex) +
-                    ` ${placeholder} ` +
+                    `${placeholder}` +
                     processedContent.slice(match.endIndex + 1);
                 linksRecoveryMap.set(placeholder, match.fullText);
             });
