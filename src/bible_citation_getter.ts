@@ -63,38 +63,22 @@ export default class BibleCitationGetter {
         let verse_indice_inf = citation[1].split("-")[0];
         let verse_indice_sup = citation[1].split("-").length > 1 ? citation[1].split("-")[1] : "";
 
+        // Use levenstein to correct typing errors 
+        book = findClosestBookName(book, [...mapBibleBookAbbrevToBibleBooks.keys()]) || ""
 
-        //console.log("Book: " + book);
-        //console.log("Chapter: " + chapter);
-        //console.log("Verse inf: " + verse_indice_inf);
-        //console.log("Verse sup: " + verse_indice_sup);
+        if (book == "") {
+            new Notice(`The book is "${book}" not in the Bible. Check for the spelling perhaps`)
+            throw Error(`The book is "${book}" not in the Bible. Check for the spelling perhaps`)
+        }
 
+
+        // console.log("Book: " + book);
+        // console.log("Chapter: " + chapter);
+        // console.log("Verse inf: " + verse_indice_inf);
+        // console.log("Verse sup: " + verse_indice_sup);
 
 
         let bookNameInFolder = this.mapbookToBookNameInFolder(book);
-
-        // If the book is not found, use levenshtein function to search for the neearest one 
-
-        if (bookNameInFolder == "Unknown") {
-            // Find the closes Book 
-            let Levenshtein_Book = findClosestBookName(book, [...mapBibleBookAbbrevToBibleBooks.keys()]) || ""
-
-            console.log("Levenshtein function used ", book, Levenshtein_Book)
-            book = Levenshtein_Book;
-
-
-            if (book) {
-
-                bookNameInFolder = this.mapbookToBookNameInFolder(book);
-            }
-            else {
-
-                new Notice(`The book is "${book}" not in the Bible. Check for the spelling perhaps`, 1e4)
-                throw Error(`The book is "${book}" not in the Bible. Check for the spelling perhaps`)
-
-            }
-
-        }
 
         bookNameInFolder = this.mapBookToOrder(bookNameInFolder) + "_" + bookNameInFolder;
 
@@ -133,10 +117,9 @@ export default class BibleCitationGetter {
 
         }
 
-        console.log("Citation begin: " + citation_indice_begin);
-        console.log("Citation end: " + citation_indice_end);
-
-        console.log("Bible version: " + bible_version);
+        // console.log("Citation begin: " + citation_indice_begin);
+        // console.log("Citation end: " + citation_indice_end);
+        // console.log("Bible version: " + bible_version);
 
         let verses_list = [];
 
@@ -169,7 +152,9 @@ export default class BibleCitationGetter {
         //console.log(verses);
 
         // The name of the citation file without its extension
-        let citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, citation_indice_begin, citation_indice_end);
+        let citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book,
+            Number.parseInt(chapter), citation_indice_begin, citation_indice_end);
+
 
         if (citationFileNameWithoutExt.toLowerCase().contains("revelation_of_john")) {
             citationFileNameWithoutExt = citationFileNameWithoutExt.replace("Revelation_of_John", "Revelation")
@@ -184,6 +169,8 @@ export default class BibleCitationGetter {
                 return `>**${value.number}** ${value.text}\n`
             }).join("");
 
+
+            
         // const divContent = `<div class="bible-citation">
 
         //     <div>
@@ -254,46 +241,9 @@ export default class BibleCitationGetter {
 
 
 
-    prepare_book_and_chapter_for_citation(book_and_chapter: string,
+    prepare_book_and_chapter_for_citation(book: string,chapter:number,
         verse_indice_inf: number,
         verse_indice_sup: number) {
-
-        // Prepare the name of the book 
-        let result = "";
-        if (isInteger(book_and_chapter.charAt(0))) {
-            result = book_and_chapter.charAt(0) + " " +
-                book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
-        }
-        else {
-            if (book_and_chapter.charAt(0) == "i") {
-                result = book_and_chapter.charAt(0).toUpperCase() + " " +
-                    book_and_chapter.charAt(1).toUpperCase() + book_and_chapter.slice(2);
-
-            }
-            else if (book_and_chapter.slice(0, 2) == "ii") {
-                result = book_and_chapter.slice(0, 2).toUpperCase() + " " +
-                    book_and_chapter.charAt(2).toUpperCase() + book_and_chapter.slice(3);
-            }
-            else if (book_and_chapter.slice(0, 3) == "iii") {
-                result = book_and_chapter.slice(0, 3).toUpperCase() + " " +
-                    book_and_chapter.charAt(3).toUpperCase() + book_and_chapter.slice(4);
-            }
-            else {
-                result = book_and_chapter.charAt(0).toUpperCase() + book_and_chapter.slice(1);
-            }
-
-        }
-
-        // Separate the name of the book from the chapter 
-        let book = "";
-        let chapter = "";
-        for (let i = 0; i < book_and_chapter.length; i++) {
-            if (isInteger(book_and_chapter[i]) && i != 0) { // Check because of 1 John, 1 Samuel, etc
-                book = book_and_chapter.substring(0, i);
-                chapter = book_and_chapter.substring(i, book_and_chapter.length);
-                break
-            }
-        }
 
         // Cas de citation d'un seul verset
         if (verse_indice_inf == verse_indice_sup) {
@@ -384,7 +334,7 @@ export default class BibleCitationGetter {
 
     mapbookToBookNameInFolder(book: string): string {
 
-        //console.log("Book given : " + book);
+        console.log("Book given : " + book);
 
         return mapBibleBookAbbrevToBibleBooks.get(book.replace(" ", "").trim()) || "Unknown";
 
@@ -537,11 +487,11 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
                         BibleCitationGetter({ app: this.app }).getCitation([line, newBibleCitationVersion].join("||"))).citation))
 
                 }
-                catch(error){
+                catch (error) {
                     console.log(error);
                     result.push(line);
                 }
-                
+
             }
             else {
                 result.push(line)
@@ -690,8 +640,8 @@ export async function changeBibleCitationVersionInText(content: string, newBible
 
         let newReference = [result.reference.split("|")[1], newBibleCitationVersion].join("||") // Create a new citation reference with the new bible version requisted
 
-        newContent = newContent.slice(0, result.startIndex) +"\n"+
-            (await (new BibleCitationGetter({ app: this.app }).getCitation(newReference))).citation + "\n"+
+        newContent = newContent.slice(0, result.startIndex) + "\n" +
+            (await (new BibleCitationGetter({ app: this.app }).getCitation(newReference))).citation + "\n" +
             newContent.slice(result.endIndex);
     }
 
