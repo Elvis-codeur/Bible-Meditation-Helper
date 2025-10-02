@@ -122,7 +122,7 @@ export default class BibleCitationGetter {
 
         if (verse_indice_sup == "") {
             if (citation[1].trim().at(-1) == "-") {
-                citation_indice_end = chapter_verses.length;
+                citation_indice_end = chapter_verses.length - 1;
             }
             else {
                 citation_indice_end = citation_indice_begin;
