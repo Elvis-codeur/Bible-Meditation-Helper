@@ -1,4 +1,4 @@
-import { pluginCallout, defaultCitationFolder, mapBibleBookAbbrevToBibleBooks, mapBibleVersionToLanguage, mapBibleBookToNumericalOrder } from "./constants";
+import { pluginCallout, defaultCitationFolder, mapBibleBookAbbrevToBibleBooks, mapBibleVersionToLanguage, mapBibleBookToNumericalOrder, mapEnglishToFrenchBibleBooks } from "./constants";
 import { Notice, TFile } from "obsidian";
 import { CalloutBlock } from "./type_definitions";
 import { findClosestBookName } from "./text_manipulations";
@@ -41,8 +41,6 @@ export default class BibleCitationGetter {
             new Notice("Aucune version de la Bible n'a été choisi", 3000);
             throw Error("Aucune version de la Bible n'a été choisi")
         }
-
-
 
         // Parse the citation
         // Remove all sapce to facilitate parsing 
@@ -152,7 +150,7 @@ export default class BibleCitationGetter {
         //console.log(verses);
 
         // The name of the citation file without its extension
-        let citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book,
+        let citationFileNameWithoutExt = this.prepare_citation_file_name(book,
             Number.parseInt(chapter), citation_indice_begin, citation_indice_end);
 
 
@@ -164,13 +162,21 @@ export default class BibleCitationGetter {
 
         const file = await this.createFileInSubfolder(defaultCitationFolder, citationFileName);
 
-        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${citationFileNameWithoutExt.replace("_", " ") + ' | ' + bible_version.trim().toUpperCase()}]]\n`
+        let citation_placeholder = this.prepare_citation_visible_text(this.mapbookToBookNameInFolder(book),Number.parseInt(chapter),citation_indice_begin,citation_indice_end,
+            mapBibleVersionToLanguage.get(bible_version.trim()) || ""
+        );
+
+        if (citation_placeholder.toLowerCase().contains("revelation_of_john")) {
+            citation_placeholder = citation_placeholder.replace("Revelation_of_John", "Revelation")
+        }
+
+        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${ citation_placeholder + ' | ' + bible_version.trim().toUpperCase()}]]\n`
             + verses_list.map((value) => {
                 return `>**${value.number}** ${value.text}\n`
             }).join("");
 
 
-            
+
         // const divContent = `<div class="bible-citation">
 
         //     <div>
@@ -241,9 +247,11 @@ export default class BibleCitationGetter {
 
 
 
-    prepare_book_and_chapter_for_citation(book: string,chapter:number,
+    prepare_citation_file_name(
+        book: string, chapter: number,
         verse_indice_inf: number,
         verse_indice_sup: number) {
+        // This function prepare the name of the file the new citations will have a wikilink to. 
 
         // Cas de citation d'un seul verset
         if (verse_indice_inf == verse_indice_sup) {
@@ -251,6 +259,32 @@ export default class BibleCitationGetter {
         }
         else {
             return `${this.mapbookToBookNameInFolder(book)} ${chapter}:${verse_indice_inf}-${verse_indice_sup}`;
+        }
+
+    }
+
+    prepare_citation_visible_text(book: string, chapter: number, verse_indice_inf: number, verse_indice_sup: number, language_code: string) {
+        // This function create the placeholder of the wikilink for the verse cited
+
+        console.log("Elvis is a son of God : ",book);
+        
+
+        let book_for_citation: string | undefined;
+
+        if (language_code == "fr") {
+
+            book_for_citation = mapEnglishToFrenchBibleBooks.get(book)
+        }
+        else {
+            book_for_citation = book;
+        }
+
+        if (verse_indice_inf == verse_indice_sup) {
+            return `${book_for_citation} ${chapter}:${verse_indice_inf}`;
+
+        }
+        else {
+            return `${book_for_citation} ${chapter}:${verse_indice_inf}-${verse_indice_sup}`;
         }
 
     }
