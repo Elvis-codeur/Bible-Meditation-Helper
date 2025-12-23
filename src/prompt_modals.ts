@@ -209,30 +209,30 @@ class BibleCitationPromptModal extends Modal {
         styleContainer.createEl('h3', { text: 'Citation Style' });
 
         // Radio buttons for citation style
-        const blockRadio = this.createRadioOption(styleContainer, 'citation-style', 'block', 'Block Citation', true);
-        const inlineRadio = this.createRadioOption(styleContainer, 'citation-style', 'inline', 'Inline Citation');
+        const blockRadio = this.createRadioOption(styleContainer, 'citation-style', CitationStyle.BLOCK, 'Block Citation', true);
+        const inlineRadio = this.createRadioOption(styleContainer, 'citation-style', CitationStyle.INLINE, 'Inline Citation');
 
         // Inline Style Options (hidden by default)
         const inlineStyleContainer = contentEl.createDiv();
         inlineStyleContainer.style.marginTop = '10px';
         inlineStyleContainer.style.display = 'none';
 
-        const quotesRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', 'quotes', 'English Style ("...")', true);
-        const guillemetsRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', 'guillemets', 'French Style (« ... »)');
+        const quotesRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', InlineQuoteStyle.ENGLISH, 'English Style ("...")', true);
+        const guillemetsRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', InlineQuoteStyle.FRENCH, 'French Style (« ... »)');
 
         // Show/hide inline style options based on citation style selection
         blockRadio.addEventListener('change', () => {
             inlineStyleContainer.style.display = 'none';
-            this.citationStyle = 'block';
+            this.citationStyle = CitationStyle.BLOCK;
         });
 
         inlineRadio.addEventListener('change', () => {
             inlineStyleContainer.style.display = 'block';
-            this.citationStyle = 'inline';
+            this.citationStyle = CitationStyle.INLINE;
         });
 
-        quotesRadio.addEventListener('change', () => this.inlineStyle = 'quotes');
-        guillemetsRadio.addEventListener('change', () => this.inlineStyle = 'guillemets');
+        quotesRadio.addEventListener('change', () => this.inlineStyle = InlineQuoteStyle.ENGLISH);
+        guillemetsRadio.addEventListener('change', () => this.inlineStyle = InlineQuoteStyle.FRENCH);
 
         contentEl.appendChild(inlineStyleContainer);
 
