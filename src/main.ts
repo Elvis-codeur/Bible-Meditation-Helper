@@ -7,6 +7,7 @@ import { TranslateNotes, } from "./translate_not";
 import { TranslationModal } from "./prompt_modals"
 import { BibleCitationSettingTab } from './settings-tab';
 import { BibleCitationPluginSettings, CalloutBlock } from "./type_definitions";
+import { BibleCitation } from "./constants";
 
 
 
@@ -201,7 +202,7 @@ export default class BibleCitationPlugin extends Plugin {
 	}
 
 
-	async getCitationFromUser(): Promise<string | null> {
+	async getCitationFromUser(): Promise<BibleCitation | null> {
 		return new Promise((resolve) => {
 			const prompt = new BibleCitationPromptModal(this.app, resolve);
 			prompt.open();
@@ -286,11 +287,11 @@ export default class BibleCitationPlugin extends Plugin {
 		if (!citation) return;
 
 		this.addCitationDiv(citation);
-		new Notice(`Added citation: ${citation}`);
+		new Notice(`Added citation: ${citation.reference}`);
 	}	/* Add this CSS to style the bible citation div and tabs */
 
 
-	async addCitationDiv(citation: string) {
+	async addCitationDiv(citation: BibleCitation) {
 		const activeLeaf = this.app.workspace.activeLeaf;
 		if (!activeLeaf) {
 			new Notice("No active document found.");
@@ -306,7 +307,7 @@ export default class BibleCitationPlugin extends Plugin {
 		const editor = (view as any).editor;
 		const cursor = editor.getCursor();
 
-		let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(citation);
+		let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(citation.fullText);
 		if (!got_citation) {
 			new Notice("Failed to get citation.");
 			return;
