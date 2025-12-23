@@ -14,15 +14,6 @@ import { BibleCitationPluginSettings, CalloutBlock } from "./type_definitions";
 
 //import init, { parse, PlaceholderRegistry, replaceAllCallouts, replaceCalloutsByType } from 'md-parser-wasm-web';
 
-import init, {
-	parse,
-	PlaceholderRegistry,
-	replaceCalloutsByType
-} from './my_modules/md-parser-wasm-pkg-web/md_parser_wasm.js';
-
-// const fs = require('fs');
-
-
 
 export default class BibleCitationPlugin extends Plugin {
 	settings: BibleCitationPluginSettings;
@@ -32,33 +23,7 @@ export default class BibleCitationPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	async initWasm() {
-		if (!this.wasmInitialized) {
-			//   try {
-			//     await init(); // ✅ This is required!
-			//     this.wasmInitialized = true;
-			//     console.log('MD Parser WASM initialized');
-			//   } catch (err) {
-			//     console.error('Failed to initialize WASM:', err);
-			//   }
-
-			// Build path to WASM file
-			const adapter = this.app.vault.adapter;
-			const pluginDir = this.manifest.dir;
-			const wasmPath = `${pluginDir}/src/my_modules/md-parser-wasm-pkg-web/md_parser_wasm_bg.wasm`;
-
-			console.log(wasmPath);
-
-			// Read the WASM file as binary
-			const wasmBinary = await adapter.readBinary(wasmPath);
-
-			// Initialize with the binary data
-			await init(wasmBinary);
-
-			this.wasmInitialized = true;
-			console.log('✅ MD Parser initialized');
-		}
-	}
+	
 
 	async loadSettings() {
 		this.settings = Object.assign({
@@ -72,7 +37,6 @@ export default class BibleCitationPlugin extends Plugin {
 	}
 
 	async onload() {
-		await this.initWasm()
 
 		// Add this at the beginning of onload
 		await this.loadSettings();
@@ -145,33 +109,8 @@ export default class BibleCitationPlugin extends Plugin {
 		this.loadStyles();
 	}
 
-	async test_markdown_parser() {
+	
 
-		const markdown = `> [!tip]
-> The fear of the Lord is the beginning of wisdom`
-
-		const doc = parse(this.app.workspace.activeEditor?.editor?.getValue() || markdown);
-
-		const registry = new PlaceholderRegistry();
-
-		// Replace only "tip" callouts
-		//const count = replaceCalloutsByType(doc, 'bible-meditation-helper-citation', registry);
-		const count = doc.replaceWithPlaceholders("wikiLink",registry);
-		
-		console.log(`Replaced ${count} tip callouts`);
-
-		const forTranslation = doc.toMarkdown();
-		console.log(`\nFor translation:\n${forTranslation}`);
-
-		// Later, restore them
-		doc.restorePlaceholders(registry);
-
-		const restored = doc.toMarkdown();
-		console.log(`\nRestored:\n${restored}`);
-
-		const allCallouts = doc.findAll('callout');
-		console.log('Found callouts:', allCallouts.map(c => c.getAttributes()));
-	}
 
 	async translate_note() {
 		const activeFile = this.app.workspace.getActiveFile();
