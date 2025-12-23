@@ -451,3 +451,28 @@ export const mapEnglishToFrenchBibleBooks = new Map<string, string>([
 
 
     export { pluginCallout, defaultCitationFolder, defaultFolderInVault };
+
+// Add these new enums and types
+export enum BibleVersion {
+    ESV = "ESV",
+    KJV = "KJV",
+    LSG10 = "LSG10"
+}
+
+export enum CitationStyle {
+    BLOCK = "block",
+    INLINE = "inline"
+}
+
+export enum InlineQuoteStyle {
+    ENGLISH = "quotes",     // "..."
+    FRENCH = "guillemets"  // « ... »
+}
+
+export interface BibleCitation {
+    reference: string;      // The Bible reference (e.g., "John 3:16")
+    version: BibleVersion;  // The Bible version
+    style: CitationStyle;   // Block or inline
+    inlineStyle?: InlineQuoteStyle; // Only used when style is INLINE
+    fullText: string;      // The complete citation text
+}

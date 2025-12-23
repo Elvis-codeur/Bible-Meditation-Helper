@@ -1,5 +1,6 @@
 import { App, Modal, Notice, TextAreaComponent, TextComponent } from "obsidian";
 import { TranslationModel, TranslationService } from "./type_definitions";
+import { BibleVersion, CitationStyle, InlineQuoteStyle, BibleCitation } from './constants';
 
 class BibleCitationVersionChangePromptModal extends Modal {
 	private resolve: (value: string | null) => void;
@@ -155,94 +156,207 @@ class BibleCitationChangePlainTextCitation extends Modal {
 
 
 class BibleCitationPromptModal extends Modal {
-	private resolve: (value: string | null) => void;
+    private resolve: (value: BibleCitation | null) => void;
+    private selectedVersion: BibleVersion = BibleVersion.ESV;
+    private citationStyle: CitationStyle = CitationStyle.BLOCK;
+    private inlineStyle: InlineQuoteStyle = InlineQuoteStyle.ENGLISH;
 
-	constructor(app: App, resolve: (value: string | null) => void) {
-		super(app);
-		this.resolve = resolve;
-	}
+    constructor(app: App, resolve: (value: BibleCitation | null) => void) {
+        super(app);
+        this.resolve = resolve;
+    }
 
-	onOpen() {
+    onOpen() {
+        const { contentEl } = this;
 
-		const { contentEl } = this;
+        // Title
+        contentEl.createEl("h2", { text: "Enter Bible Citation" });
 
-		// Title
-		contentEl.createEl("h2", { text: "Enter Bible Citation" });
+        // Description
+        const description = contentEl.createEl("p", {
+            text: "Please enter a Bible verse (e.g., John 3:16) and choose options below.",
+        });
+        description.style.marginBottom = "12px";
+        description.style.fontStyle = "italic";
+        description.style.color = "#667";
 
-		// Description
-		const description = contentEl.createEl("p", {
-			text: "Please enter a Bible verse (e.g., John 3:16) and choose a version.",
-		});
-		description.style.marginBottom = "12px";
-		description.style.fontStyle = "italic";
-		description.style.color = "#667";
+        // Input element
+        const inputEl = contentEl.createEl("input", { 
+            type: "text", 
+            placeholder: "e.g. John 3:16" 
+        });
+        this.styleInputField(inputEl);
 
-		// Input element
-		const inputEl = contentEl.createEl("input", { type: "text", placeholder: "e.g. John 3:16" });
-		inputEl.style.padding = "8px";
-		inputEl.style.marginBottom = "10px";
-		inputEl.style.width = "100%";
-		inputEl.style.border = "1px solid #ccc";
-		inputEl.style.borderRadius = "4px";
-		inputEl.style.boxSizing = "border-box";
-		inputEl.style.height = "70px"
-		inputEl.focus();
+        // Version Cards Container
+        const versionsContainer = contentEl.createDiv();
+        versionsContainer.style.display = 'flex';
+        versionsContainer.style.gap = '10px';
+        versionsContainer.style.marginTop = '20px';
+        versionsContainer.style.marginBottom = '20px';
 
-		// Select element
-		const selectEl = contentEl.createEl("select");
-		selectEl.style.padding = "6px";
-		selectEl.style.margin = "10px 0";
-		selectEl.style.border = "1px solid #ccc";
-		selectEl.style.borderRadius = "4px";
-		selectEl.style.width = "100%";
+        // Create version cards
+        const versions = Object.values(BibleVersion);
+        versions.forEach(version => {
+            const card = this.createVersionCard(version, versionsContainer);
+            if (version === this.selectedVersion) {
+                card.addClass('selected-version');
+            }
+        });
 
-		const versions = ["ESV", "KJV", "LSG10"];
-		versions.forEach(version => {
-			const optionEl = selectEl.createEl("option", { text: version });
-			optionEl.value = version;
-			selectEl.appendChild(optionEl);
-		});
+        // Citation Style Options
+        const styleContainer = contentEl.createDiv();
+        styleContainer.style.marginTop = '20px';
+        styleContainer.createEl('h3', { text: 'Citation Style' });
 
-		// Submit button
-		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		submitButton.style.marginTop = "12px";
-		submitButton.style.padding = "8px 16px";
-		submitButton.style.backgroundColor = "#3a7bfd";
-		submitButton.style.color = "#fff";
-		submitButton.style.border = "none";
-		submitButton.style.borderRadius = "4px";
-		submitButton.style.cursor = "pointer";
+        // Radio buttons for citation style
+        const blockRadio = this.createRadioOption(styleContainer, 'citation-style', 'block', 'Block Citation', true);
+        const inlineRadio = this.createRadioOption(styleContainer, 'citation-style', 'inline', 'Inline Citation');
 
-		submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
-		submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
+        // Inline Style Options (hidden by default)
+        const inlineStyleContainer = contentEl.createDiv();
+        inlineStyleContainer.style.marginTop = '10px';
+        inlineStyleContainer.style.display = 'none';
 
-		// Keyboard shortcut (Enter)
-		inputEl.addEventListener("keypress", (event) => {
-			if (event.key === "Enter") {
-				submitButton.click();
-			}
-		});
+        const quotesRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', 'quotes', 'English Style ("...")', true);
+        const guillemetsRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', 'guillemets', 'French Style (« ... »)');
 
-		// Submit logic
-		submitButton.onclick = () => {
-			const citation = inputEl.value.trim() + "||" + selectEl.value.trim();
-			this.resolve(citation || null);
-			this.close();
-		};
+        // Show/hide inline style options based on citation style selection
+        blockRadio.addEventListener('change', () => {
+            inlineStyleContainer.style.display = 'none';
+            this.citationStyle = 'block';
+        });
 
-		// Append elements to panel
-		contentEl.appendChild(inputEl);
-		contentEl.appendChild(selectEl);
-		contentEl.appendChild(submitButton);
+        inlineRadio.addEventListener('change', () => {
+            inlineStyleContainer.style.display = 'block';
+            this.citationStyle = 'inline';
+        });
 
+        quotesRadio.addEventListener('change', () => this.inlineStyle = 'quotes');
+        guillemetsRadio.addEventListener('change', () => this.inlineStyle = 'guillemets');
 
-	}
+        contentEl.appendChild(inlineStyleContainer);
 
+        // Submit button
+        const submitButton = this.createSubmitButton();
+        submitButton.onclick = () => {
+            const reference = inputEl.value.trim();
+            if (!reference) {
+                new Notice('Please enter a Bible reference');
+                return;
+            }
+            
+            const citation = this.formatCitation(reference);
+            this.resolve(citation);
+            this.close();
+        };
 
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
+        // Keyboard shortcut (Enter)
+        inputEl.addEventListener("keypress", (event) => {
+            if (event.key === "Enter") {
+                submitButton.click();
+            }
+        });
+
+        // Append elements
+        contentEl.appendChild(submitButton);
+    }
+
+    private styleInputField(inputEl: HTMLInputElement) {
+        inputEl.style.padding = "8px";
+        inputEl.style.marginBottom = "10px";
+        inputEl.style.width = "100%";
+        inputEl.style.border = "1px solid #ccc";
+        inputEl.style.borderRadius = "4px";
+        inputEl.style.boxSizing = "border-box";
+        inputEl.style.height = "40px";
+        inputEl.focus();
+    }
+
+    private createVersionCard(version: BibleVersion, container: HTMLElement): HTMLElement {
+        const card = container.createDiv({ cls: 'version-card' });
+        card.setText(version);
+        card.style.padding = '15px 25px';
+        card.style.border = '1px solid #ccc';
+        card.style.borderRadius = '4px';
+        card.style.cursor = 'pointer';
+        card.style.backgroundColor = version === this.selectedVersion ? '#3a7bfd' : '#fff';
+        card.style.color = version === this.selectedVersion ? '#fff' : '#000';
+
+        card.addEventListener('click', () => {
+            container.findAll('.version-card').forEach(c => {
+                c.style.backgroundColor = '#fff';
+                c.style.color = '#000';
+            });
+            card.style.backgroundColor = '#3a7bfd';
+            card.style.color = '#fff';
+            this.selectedVersion = version;
+        });
+
+        return card;
+    }
+
+    private createRadioOption(
+        container: HTMLElement, 
+        name: string, 
+        value: CitationStyle | InlineQuoteStyle, 
+        label: string, 
+        checked = false
+    ): HTMLInputElement {
+        const wrapper = container.createDiv();
+        wrapper.style.marginBottom = '8px';
+
+        const radio = wrapper.createEl('input', {
+            type: 'radio',
+            attr: { name, value, checked }
+        });
+        radio.style.marginRight = '8px';
+
+        wrapper.createEl('label', { text: label });
+
+        return radio;
+    }
+
+    private createSubmitButton(): HTMLButtonElement {
+        const submitButton = createEl("button", { text: "Submit" });
+        submitButton.style.marginTop = "12px";
+        submitButton.style.padding = "8px 16px";
+        submitButton.style.backgroundColor = "#3a7bfd";
+        submitButton.style.color = "#fff";
+        submitButton.style.border = "none";
+        submitButton.style.borderRadius = "4px";
+        submitButton.style.cursor = "pointer";
+
+        submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
+        submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
+
+        return submitButton;
+    }
+
+    private formatCitation(reference: string): BibleCitation {
+        let fullText: string;
+        
+        if (this.citationStyle === CitationStyle.BLOCK) {
+            fullText = `${reference}||${this.selectedVersion}`;
+        } else {
+            const quote = this.inlineStyle === InlineQuoteStyle.ENGLISH ? 
+                `"${reference}||${this.selectedVersion}"` : 
+                `« ${reference}||${this.selectedVersion} »`;
+            fullText = `{${quote}}`;
+        }
+
+        return {
+            reference,
+            version: this.selectedVersion,
+            style: this.citationStyle,
+            inlineStyle: this.citationStyle === CitationStyle.INLINE ? this.inlineStyle : undefined,
+            fullText
+        };
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
 }
 
 
