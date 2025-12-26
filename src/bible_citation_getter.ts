@@ -1,6 +1,6 @@
-import { pluginCallout, defaultCitationFolder, mapBibleBookAbbrevToBibleBooks, mapBibleVersionToLanguage, mapBibleBookToNumericalOrder, mapEnglishToFrenchBibleBooks } from "./constants";
+import { pluginCallout, defaultCitationFolder, mapBibleBookAbbrevToBibleBooks, mapBibleVersionToLanguage, mapBibleBookToNumericalOrder, mapEnglishToFrenchBibleBooks, BibleCitation, CitationStyle, InlineQuoteStyle, BibleVersion } from "./constants";
 import { Notice, TFile } from "obsidian";
-import { CalloutBlock } from "./type_definitions";
+import { CalloutBlock, Verse } from "./type_definitions";
 import { findClosestBookName } from "./text_manipulations";
 import exp from "constants";
 
@@ -27,7 +27,9 @@ export default class BibleCitationGetter {
     }
 
 
-    async getCitation(text: string): Promise<{ citation: string, result: any }> {
+    async getCitation(citationObject: BibleCitation): Promise<{ citation: string, result: any }> {
+
+        const text = citationObject.fullText;
 
         console.log("getCitation -- ", text)
 
@@ -127,17 +129,18 @@ export default class BibleCitationGetter {
         for (let compteur = 0; compteur < chapter_verses.length; compteur++) {
             let line = chapter_verses[compteur];
 
-            let verse_number = 0;
+            let verse_num = 0;
             if (line.contains(".")) {
                 // Take the number of the verse at the begening of the verse 
-                verse_number = parseInt(line.slice(0, line.indexOf(".")));
+                verse_num = parseInt(line.slice(0, line.indexOf(".")));
 
-                if (verse_number >= citation_indice_begin && verse_number <= citation_indice_end) {
+                if (verse_num >= citation_indice_begin && verse_num <= citation_indice_end) {
                     verses_list.push(
+
                         {
-                            number: verse_number,
-                            text: line.slice(line.indexOf(".") + 1, -1).trimEnd() // I add 1 to avoid the .
-                        }
+                            verse_number: verse_num,
+                            verse_text: line.slice(line.indexOf(".") + 1, -1).trimEnd() // I add 1 to avoid the .
+                        } as Verse
                     )
 
                 }
@@ -162,7 +165,7 @@ export default class BibleCitationGetter {
 
         const file = await this.createFileInSubfolder(defaultCitationFolder, citationFileName);
 
-        let citation_placeholder = this.prepare_citation_visible_text(this.mapbookToBookNameInFolder(book),Number.parseInt(chapter),citation_indice_begin,citation_indice_end,
+        let citation_placeholder = this.prepare_citation_visible_text(this.mapbookToBookNameInFolder(book), Number.parseInt(chapter), citation_indice_begin, citation_indice_end,
             mapBibleVersionToLanguage.get(bible_version.trim()) || ""
         );
 
@@ -170,40 +173,90 @@ export default class BibleCitationGetter {
             citation_placeholder = citation_placeholder.replace("Revelation_of_John", "Revelation")
         }
 
-        const divContent = `>${pluginCallout}  [[${file.path.split('/').pop()?.replace(/\.md$/, "")}|${ citation_placeholder + ' | ' + bible_version.trim().toUpperCase()}]]\n`
-            + verses_list.map((value) => {
-                return `>**${value.number}** ${value.text}\n`
-            }).join("");
+        if (citationObject.style == CitationStyle.BLOCK) {
+
+            const divContent = this.getBlockCitation(
+                verses_list,
+                {
+                    filePath: file.path.split('/').pop()?.replace(/\.md$/, ""),
+                    citationPlaceholder: citation_placeholder,
+                    bibleVersion: bible_version
+                }
+            );
+            return { citation: divContent, result: result };
+
+        }
+        else {
+            const divContent = this.getInlineCitation(
+                verses_list,
+                citationObject.inlineStyle,
+                {
+                    filePath: file.path.split('/').pop()?.replace(/\.md$/, ""),
+                    citationPlaceholder: citation_placeholder,
+                    bibleVersion: bible_version
+                }
+            );
+            return { citation: divContent, result: result };
+
+
+        }
 
 
 
-        // const divContent = `<div class="bible-citation">
+    }
 
-        //     <div>
-
-        //     <div class = "scripture_quoted" >${this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end)} </div>
-
-        //     <div class="bible_version_section_div">
-        //         <label for="myDropdown">Choose an option:</label>
-        // 		<select id="select_bible_version_dropdown">
-        // 			<option value="option1">ESV</option>
-        // 			<option value="option2">KJV</option>
-        // 			<option value="option3">LSG10</option>
-        // 		</select>
-
-        //     </div>
-
-        //     </div>
-
-        //     <div class="citation-content">${verses_list.map((value) => {
-        //     return `<div><p> <b> ${value.number} </b> ${value.text} </p></div>`
-        // }).join("")}</div>
-        // </div>`;
+    getInlineCitation(verses_list: Array<Verse>,
+        inlineQuoteStyleObject?: InlineQuoteStyle,
+        citationMeta?: {
+            filePath?: string, citationPlaceholder?: string,
+            bibleVersion?: string,
+        }): string {
 
 
-        return { citation: divContent, result: result };
+        if (verses_list.length === 0) {
+            return "";
+        }
 
+        let citationReference = "";
 
+        if (citationMeta && citationMeta.filePath && citationMeta.citationPlaceholder && citationMeta.bibleVersion) {
+            citationReference = `[[${citationMeta.filePath}|${citationMeta.citationPlaceholder} | ${citationMeta.bibleVersion.trim().toUpperCase()}]]`;
+        }
+
+        if (inlineQuoteStyleObject == InlineQuoteStyle.FRENCH) {
+            return "«" + verses_list.map((value) => {
+                const num = value.verse_number;
+                const txt = value.verse_text;
+
+                return `**${num}** ${txt}`;
+            }).join(" ") + "» " + citationReference;
+        }
+        else {
+            return "“" + verses_list.map((value) => {
+                const num = value.verse_number;
+                const txt = value.verse_text;
+                return `**${num}** ${txt}`;
+            }).join(" ") + "” " + citationReference;
+        }
+
+    }
+
+    getBlockCitation(verses_list: Array<Verse>, citationMeta?: { filePath?: string, citationPlaceholder?: string, bibleVersion?: string }): string {
+        // citationMeta is optional, but if provided, use it for the header line
+        let header = "";
+        if (citationMeta && citationMeta.filePath && citationMeta.citationPlaceholder && citationMeta.bibleVersion) {
+            header = `>${pluginCallout}  [[${citationMeta.filePath}|${citationMeta.citationPlaceholder} | ${citationMeta.bibleVersion.trim().toUpperCase()}]]\n`;
+        }
+        // verses_list: array of {verse_number, verse_text} or {number, text}
+        return (
+            header +
+            verses_list.map((value) => {
+                // Support both {verse_number, verse_text} and {number, text}
+                const num = value.verse_number;
+                const txt = value.verse_text;
+                return `>**${num}** ${txt}\n`;
+            }).join("")
+        );
     }
 
 
@@ -266,8 +319,8 @@ export default class BibleCitationGetter {
     prepare_citation_visible_text(book: string, chapter: number, verse_indice_inf: number, verse_indice_sup: number, language_code: string) {
         // This function create the placeholder of the wikilink for the verse cited
 
-        console.log("Elvis is a son of God : ",book);
-        
+        console.log("Elvis is a son of God : ", book);
+
 
         let book_for_citation: string | undefined;
 
@@ -517,8 +570,14 @@ export async function convertPlainCitationsToPluggingCitationsInText(content: st
                 try {
                     console.log(line)
 
+                    let citationObject = {
+                        reference: line,
+                        style: CitationStyle.BLOCK,
+                        version: BibleVersion[newBibleCitationVersion as keyof typeof BibleVersion]
+                    } as BibleCitation;
+
                     result.push(await ((await new
-                        BibleCitationGetter({ app: this.app }).getCitation([line, newBibleCitationVersion].join("||"))).citation))
+                        BibleCitationGetter({ app: this.app }).getCitation(citationObject)).citation))
 
                 }
                 catch (error) {
@@ -672,10 +731,20 @@ export async function changeBibleCitationVersionInText(content: string, newBible
     let newContent = content;
     for (const result of matches) {
 
-        let newReference = [result.reference.split("|")[1], newBibleCitationVersion].join("||") // Create a new citation reference with the new bible version requisted
+        let newReference = result.reference; // Create a new citation reference with the new bible version requisted
+
+        newBibleCitationVersion
+
+        let citationObject = {
+            reference: newReference,
+            style: CitationStyle.BLOCK,
+            version: BibleVersion[newBibleCitationVersion as keyof typeof BibleVersion]
+        } as BibleCitation;
+
 
         newContent = newContent.slice(0, result.startIndex) + "\n" +
-            (await (new BibleCitationGetter({ app: this.app }).getCitation(newReference))).citation + "\n" +
+            (await (new BibleCitationGetter({ app: this.app }).getCitation(citationObject))).citation
+            + "\n" +
             newContent.slice(result.endIndex);
     }
 
