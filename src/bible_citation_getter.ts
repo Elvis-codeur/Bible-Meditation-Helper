@@ -224,19 +224,18 @@ export default class BibleCitationGetter {
         }
 
         if (inlineQuoteStyleObject == InlineQuoteStyle.FRENCH) {
-            return "«" + verses_list.map((value) => {
+            return "« " + verses_list.map((value) => {
                 const num = value.verse_number;
                 const txt = value.verse_text;
-
                 return `**${num}** ${txt}`;
-            }).join(" ") + "» " + citationReference;
+            }).join(" ") + " » " + citationReference;
         }
         else {
-            return "“" + verses_list.map((value) => {
+            return "\"" + verses_list.map((value) => {
                 const num = value.verse_number;
                 const txt = value.verse_text;
                 return `**${num}** ${txt}`;
-            }).join(" ") + "” " + citationReference;
+            }).join(" ") + "\" " + citationReference;
         }
 
     }
