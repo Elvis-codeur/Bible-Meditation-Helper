@@ -1,6 +1,6 @@
-import { App, Modal, Notice, TextAreaComponent, TextComponent } from "obsidian";
+import { App, Modal, Notice, TextAreaComponent, TextComponent, TFolder, TFile } from "obsidian";
 import { TranslationModel, TranslationService } from "./type_definitions";
-import { BibleVersion, CitationStyle, InlineQuoteStyle, BibleCitation } from './constants';
+import { BibleVersion, CitationStyle, InlineQuoteStyle, BibleCitation, mapEnglishToFrenchBibleBooks, mapBibleVersionToLanguage } from './constants';
 
 class BibleCitationVersionChangePromptModal extends Modal {
 	private resolve: (value: string | null) => void;
@@ -160,14 +160,79 @@ class BibleCitationPromptModal extends Modal {
     private selectedVersion: BibleVersion = BibleVersion.ESV;
     private citationStyle: CitationStyle = CitationStyle.BLOCK;
     private inlineStyle: InlineQuoteStyle = InlineQuoteStyle.ENGLISH;
+    private existingCitations: string[] = [];
+    private suggestionContainer: HTMLElement | null = null;
+    private selectedSuggestionIndex: number = -1;
 
     constructor(app: App, resolve: (value: BibleCitation | null) => void) {
         super(app);
         this.resolve = resolve;
     }
 
-    onOpen() {
+    async loadExistingCitations(): Promise<void> {
+        const citationsFolder = 'Bible-Meditation-Helper/citations';
+        const folder = this.app.vault.getAbstractFileByPath(citationsFolder);
+
+        if (folder instanceof TFolder) {
+            const filenames = folder.children
+                .filter((file) => file instanceof TFile && file.extension === 'md')
+                .map((file) => file.name.replace('.md', ''));
+
+            // Create both English and French versions of each citation
+            const allCitations: string[] = [];
+            filenames.forEach(filename => {
+                const englishVersion = this.parseFilenameToReadable(filename, 'en');
+                const frenchVersion = this.parseFilenameToReadable(filename, 'fr');
+
+                allCitations.push(englishVersion);
+                // Only add French version if it's different from English
+                if (frenchVersion !== englishVersion) {
+                    allCitations.push(frenchVersion);
+                }
+            });
+
+            this.existingCitations = allCitations.sort();
+        }
+    }
+
+    private parseFilenameToReadable(filename: string, languageCode?: string): string {
+        // Extract book name and citation parts
+        // Examples: "I_Samuel 1_1" -> "I Samuel 1:1" or "1 Samuel 1:1" (French)
+        //           "Song_of_Solomon 1_1-2" -> "Song of Solomon 1:1-2" or "Cantique des Cantiques 1:1-2" (French)
+
+        // Split by space to separate book from chapter_verse
+        const parts = filename.split(' ');
+        if (parts.length < 2) {
+            return filename.replace(/_/g, ' ');
+        }
+
+        const bookName = parts[0]; // e.g., "I_Samuel"
+        let citationPart = parts.slice(1).join(' '); // e.g., "1_1" or "1_1-2"
+
+        // Replace the underscore between chapter and verse with a colon
+        // "1_1" -> "1:1", "1_1-2" -> "1:1-2"
+        citationPart = citationPart.replace(/_/, ':');
+
+        // Use provided languageCode or fall back to selectedVersion
+        const lang = languageCode || (mapBibleVersionToLanguage.get(this.selectedVersion) || 'en');
+        let displayBookName = bookName.replace(/_/g, ' '); // Default: replace underscores
+
+        if (lang === 'fr') {
+            // Try to get French translation
+            const frenchName = mapEnglishToFrenchBibleBooks.get(bookName);
+            if (frenchName) {
+                displayBookName = frenchName;
+            }
+        }
+
+        return `${displayBookName} ${citationPart}`;
+    }
+
+    async onOpen() {
         const { contentEl } = this;
+
+        // Load existing citations
+        await this.loadExistingCitations();
 
         // Title
         contentEl.createEl("h2", { text: "Enter Bible Citation" });
@@ -180,12 +245,42 @@ class BibleCitationPromptModal extends Modal {
         description.style.fontStyle = "italic";
         description.style.color = "#667";
 
+        // Input container for autocomplete
+        const inputContainer = contentEl.createDiv();
+        inputContainer.style.position = "relative";
+        inputContainer.style.marginBottom = "10px";
+
         // Input element
-        const inputEl = contentEl.createEl("input", { 
-            type: "text", 
-            placeholder: "e.g. John 3:16" 
+        const inputEl = inputContainer.createEl("input", {
+            type: "text",
+            placeholder: "e.g. John 3:16"
         });
         this.styleInputField(inputEl);
+
+        // Suggestion dropdown
+        this.suggestionContainer = inputContainer.createDiv();
+        this.suggestionContainer.style.position = "absolute";
+        this.suggestionContainer.style.top = "100%";
+        this.suggestionContainer.style.left = "0";
+        this.suggestionContainer.style.right = "0";
+        this.suggestionContainer.style.maxHeight = "200px";
+        this.suggestionContainer.style.overflowY = "auto";
+        this.suggestionContainer.style.backgroundColor = "var(--background-primary)";
+        this.suggestionContainer.style.border = "1px solid var(--background-modifier-border)";
+        this.suggestionContainer.style.borderRadius = "4px";
+        this.suggestionContainer.style.zIndex = "1000";
+        this.suggestionContainer.style.display = "none";
+        this.suggestionContainer.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+
+        // Input event listener for autocomplete
+        inputEl.addEventListener("input", () => {
+            this.handleInputChange(inputEl);
+        });
+
+        // Keyboard navigation for suggestions
+        inputEl.addEventListener("keydown", (event) => {
+            this.handleKeyNavigation(event, inputEl);
+        });
 
         // Version Cards Container
         const versionsContainer = contentEl.createDiv();
@@ -208,31 +303,41 @@ class BibleCitationPromptModal extends Modal {
         styleContainer.style.marginTop = '20px';
         styleContainer.createEl('h3', { text: 'Citation Style' });
 
-        // Radio buttons for citation style
-        const blockRadio = this.createRadioOption(styleContainer, 'citation-style', CitationStyle.BLOCK, 'Block Citation', true);
-        const inlineRadio = this.createRadioOption(styleContainer, 'citation-style', CitationStyle.INLINE, 'Inline Citation');
+        // Citation Style Cards Container
+        const styleCardsContainer = contentEl.createDiv();
+        styleCardsContainer.style.display = 'flex';
+        styleCardsContainer.style.gap = '10px';
+        styleCardsContainer.style.marginTop = '10px';
+        styleCardsContainer.style.marginBottom = '20px';
+
+        // Create citation style cards
+        const blockCard = this.createCitationStyleCard(CitationStyle.BLOCK, 'Block Citation', styleCardsContainer, true);
+        const inlineCard = this.createCitationStyleCard(CitationStyle.INLINE, 'Inline Citation', styleCardsContainer, false);
 
         // Inline Style Options (hidden by default)
         const inlineStyleContainer = contentEl.createDiv();
         inlineStyleContainer.style.marginTop = '10px';
         inlineStyleContainer.style.display = 'none';
+        inlineStyleContainer.createEl('h4', { text: 'Quote Style' });
 
-        const quotesRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', InlineQuoteStyle.ENGLISH, 'English Style ("...")', true);
-        const guillemetsRadio = this.createRadioOption(inlineStyleContainer, 'inline-style', InlineQuoteStyle.FRENCH, 'French Style (« ... »)');
+        // Inline Style Cards Container
+        const inlineStyleCardsContainer = inlineStyleContainer.createDiv();
+        inlineStyleCardsContainer.style.display = 'flex';
+        inlineStyleCardsContainer.style.gap = '10px';
+        inlineStyleCardsContainer.style.marginTop = '10px';
 
-        // Show/hide inline style options based on citation style selection
-        blockRadio.addEventListener('change', () => {
+        // Create inline style cards
+        const quotesCard = this.createInlineStyleCard(InlineQuoteStyle.ENGLISH, 'English ("...")', inlineStyleCardsContainer, true);
+        const guillemetsCard = this.createInlineStyleCard(InlineQuoteStyle.FRENCH, 'French (« ... »)', inlineStyleCardsContainer, false);
+
+        // Store reference for showing/hiding
+        blockCard.addEventListener('click', () => {
             inlineStyleContainer.style.display = 'none';
-            this.citationStyle = CitationStyle.BLOCK;
         });
 
-        inlineRadio.addEventListener('change', () => {
+        inlineCard.addEventListener('click', () => {
             inlineStyleContainer.style.display = 'block';
-            this.citationStyle = CitationStyle.INLINE;
         });
-
-        quotesRadio.addEventListener('change', () => this.inlineStyle = InlineQuoteStyle.ENGLISH);
-        guillemetsRadio.addEventListener('change', () => this.inlineStyle = InlineQuoteStyle.FRENCH);
 
         contentEl.appendChild(inlineStyleContainer);
 
@@ -250,10 +355,15 @@ class BibleCitationPromptModal extends Modal {
             this.close();
         };
 
-        // Keyboard shortcut (Enter)
+        // Keyboard shortcut (Enter) - only submit if suggestions are not visible
         inputEl.addEventListener("keypress", (event) => {
             if (event.key === "Enter") {
-                submitButton.click();
+                // Only submit if suggestions are not visible or no suggestion is selected
+                if (!this.suggestionContainer ||
+                    this.suggestionContainer.style.display === 'none' ||
+                    this.selectedSuggestionIndex === -1) {
+                    submitButton.click();
+                }
             }
         });
 
@@ -290,6 +400,52 @@ class BibleCitationPromptModal extends Modal {
             card.style.backgroundColor = '#3a7bfd';
             card.style.color = '#fff';
             this.selectedVersion = version;
+        });
+
+        return card;
+    }
+
+    private createCitationStyleCard(style: CitationStyle, label: string, container: HTMLElement, selected: boolean): HTMLElement {
+        const card = container.createDiv({ cls: 'citation-style-card' });
+        card.setText(label);
+        card.style.padding = '15px 25px';
+        card.style.border = '1px solid #ccc';
+        card.style.borderRadius = '4px';
+        card.style.cursor = 'pointer';
+        card.style.backgroundColor = selected ? '#3a7bfd' : '#fff';
+        card.style.color = selected ? '#fff' : '#000';
+
+        card.addEventListener('click', () => {
+            container.findAll('.citation-style-card').forEach(c => {
+                c.style.backgroundColor = '#fff';
+                c.style.color = '#000';
+            });
+            card.style.backgroundColor = '#3a7bfd';
+            card.style.color = '#fff';
+            this.citationStyle = style;
+        });
+
+        return card;
+    }
+
+    private createInlineStyleCard(style: InlineQuoteStyle, label: string, container: HTMLElement, selected: boolean): HTMLElement {
+        const card = container.createDiv({ cls: 'inline-style-card' });
+        card.setText(label);
+        card.style.padding = '15px 25px';
+        card.style.border = '1px solid #ccc';
+        card.style.borderRadius = '4px';
+        card.style.cursor = 'pointer';
+        card.style.backgroundColor = selected ? '#3a7bfd' : '#fff';
+        card.style.color = selected ? '#fff' : '#000';
+
+        card.addEventListener('click', () => {
+            container.findAll('.inline-style-card').forEach(c => {
+                c.style.backgroundColor = '#fff';
+                c.style.color = '#000';
+            });
+            card.style.backgroundColor = '#3a7bfd';
+            card.style.color = '#fff';
+            this.inlineStyle = style;
         });
 
         return card;
@@ -333,7 +489,7 @@ class BibleCitationPromptModal extends Modal {
     }
 
     private formatCitation(reference: string): BibleCitation {
-		
+
         let fullText: string = `${reference}||${this.selectedVersion}`;
 
         return {
@@ -343,6 +499,118 @@ class BibleCitationPromptModal extends Modal {
             inlineStyle: this.citationStyle === CitationStyle.INLINE ? this.inlineStyle : undefined,
             fullText,// Always "reference||version" format
         };
+    }
+
+    private handleInputChange(inputEl: HTMLInputElement): void {
+        const inputValue = inputEl.value.trim().toLowerCase();
+
+        if (!this.suggestionContainer) return;
+
+        // Clear previous suggestions
+        this.suggestionContainer.empty();
+        this.selectedSuggestionIndex = -1;
+
+        // If input is empty, hide suggestions
+        if (!inputValue) {
+            this.suggestionContainer.style.display = 'none';
+            return;
+        }
+
+        // Filter citations that match the input
+        const filteredCitations = this.existingCitations.filter(citation =>
+            citation.toLowerCase().includes(inputValue)
+        );
+
+        // If no matches, hide suggestions
+        if (filteredCitations.length === 0) {
+            this.suggestionContainer.style.display = 'none';
+            return;
+        }
+
+        // Display filtered suggestions (limit to 10 for performance)
+        const limitedCitations = filteredCitations.slice(0, 10);
+        limitedCitations.forEach((citation, index) => {
+            const suggestionItem = this.suggestionContainer!.createDiv();
+            suggestionItem.setText(citation);
+            suggestionItem.style.padding = '8px 12px';
+            suggestionItem.style.cursor = 'pointer';
+            suggestionItem.style.borderBottom = '1px solid var(--background-modifier-border)';
+
+            // Hover effect
+            suggestionItem.addEventListener('mouseenter', () => {
+                suggestionItem.style.backgroundColor = 'var(--background-modifier-hover)';
+            });
+            suggestionItem.addEventListener('mouseleave', () => {
+                if (index !== this.selectedSuggestionIndex) {
+                    suggestionItem.style.backgroundColor = 'transparent';
+                }
+            });
+
+            // Click handler
+            suggestionItem.addEventListener('click', () => {
+                inputEl.value = citation;
+                this.suggestionContainer!.style.display = 'none';
+                inputEl.focus();
+            });
+
+            // Store reference for keyboard navigation
+            suggestionItem.setAttribute('data-index', index.toString());
+        });
+
+        this.suggestionContainer.style.display = 'block';
+    }
+
+    private handleKeyNavigation(event: KeyboardEvent, inputEl: HTMLInputElement): void {
+        if (!this.suggestionContainer || this.suggestionContainer.style.display === 'none') {
+            return;
+        }
+
+        const suggestions = this.suggestionContainer.querySelectorAll('div');
+        const suggestionsCount = suggestions.length;
+
+        if (suggestionsCount === 0) return;
+
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                this.selectedSuggestionIndex = (this.selectedSuggestionIndex + 1) % suggestionsCount;
+                this.updateSuggestionSelection(suggestions);
+                break;
+
+            case 'ArrowUp':
+                event.preventDefault();
+                this.selectedSuggestionIndex = (this.selectedSuggestionIndex - 1 + suggestionsCount) % suggestionsCount;
+                this.updateSuggestionSelection(suggestions);
+                break;
+
+            case 'Enter':
+                if (this.selectedSuggestionIndex >= 0) {
+                    event.preventDefault();
+                    const selectedSuggestion = suggestions[this.selectedSuggestionIndex];
+                    inputEl.value = selectedSuggestion.getText();
+                    this.suggestionContainer.style.display = 'none';
+                    this.selectedSuggestionIndex = -1;
+                }
+                break;
+
+            case 'Escape':
+                event.preventDefault();
+                this.suggestionContainer.style.display = 'none';
+                this.selectedSuggestionIndex = -1;
+                break;
+        }
+    }
+
+    private updateSuggestionSelection(suggestions: NodeListOf<Element>): void {
+        suggestions.forEach((suggestion, index) => {
+            const htmlSuggestion = suggestion as HTMLElement;
+            if (index === this.selectedSuggestionIndex) {
+                htmlSuggestion.style.backgroundColor = 'var(--background-modifier-hover)';
+                htmlSuggestion.scrollIntoView({ block: 'nearest' });
+            } else {
+                htmlSuggestion.style.backgroundColor = 'transparent';
+            }
+        });
     }
 
     onClose() {
