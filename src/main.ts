@@ -307,7 +307,7 @@ export default class BibleCitationPlugin extends Plugin {
 		const editor = (view as any).editor;
 		const cursor = editor.getCursor();
 
-		let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(citation.fullText);
+		let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(citation);
 		if (!got_citation) {
 			new Notice("Failed to get citation.");
 			return;

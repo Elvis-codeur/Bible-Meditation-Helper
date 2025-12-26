@@ -77,6 +77,12 @@ interface TranslationSettings {
     translationsOutputFolder:string;
 }
 
+interface Verse {
+  verse_number:number;
+  verse_text:string;
+
+}
+
 
 
 export type{
@@ -88,6 +94,7 @@ export type{
     TranslationSettings,
     BibleCitationPluginSettings,
     CalloutBlock,
+    Verse
 }
 
 export {

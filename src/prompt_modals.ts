@@ -333,23 +333,15 @@ class BibleCitationPromptModal extends Modal {
     }
 
     private formatCitation(reference: string): BibleCitation {
-        let fullText: string;
-        
-        if (this.citationStyle === CitationStyle.BLOCK) {
-            fullText = `${reference}||${this.selectedVersion}`;
-        } else {
-            const quote = this.inlineStyle === InlineQuoteStyle.ENGLISH ? 
-                `"${reference}||${this.selectedVersion}"` : 
-                `« ${reference}||${this.selectedVersion} »`;
-            fullText = `{${quote}}`;
-        }
+		
+        let fullText: string = `${reference}||${this.selectedVersion}`;
 
         return {
             reference,
             version: this.selectedVersion,
             style: this.citationStyle,
             inlineStyle: this.citationStyle === CitationStyle.INLINE ? this.inlineStyle : undefined,
-            fullText
+            fullText,// Always "reference||version" format
         };
     }
 

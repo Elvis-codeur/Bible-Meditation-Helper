@@ -464,6 +464,7 @@ export enum CitationStyle {
     INLINE = "inline"
 }
 
+
 export enum InlineQuoteStyle {
     ENGLISH = "quotes",     // "..."
     FRENCH = "guillemets"  // « ... »
