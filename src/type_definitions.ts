@@ -67,6 +67,7 @@ interface BibleCitationPluginSettings {
     googleTranslateApiKey: string;
     customTranslationPrompts: string[]; // Now stores multiple prompts
     translationsOutputFolder:string;
+    preferredBibleVersion:string;
 }
 interface TranslationSettings {
     openaiApiKey: string;

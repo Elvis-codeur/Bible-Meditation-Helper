@@ -34,9 +34,19 @@ export default class BibleCitationPlugin extends Plugin {
 			geminiApiKey: '',
 			deeplApiKey: '',
 			googleTranslateApiKey: '',
-			customTranslationPrompts: []  // initialize with empty array
+			customTranslationPrompts: [],  // initialize with empty array
+			translationsOutputFolder: '',
+			preferredBibleVersion: ''
 		}, await this.loadData());
 	}
+
+	private preferredVersionStore = {
+		get: () => this.settings.preferredBibleVersion || undefined,
+		set: async (version: string) => {
+			this.settings.preferredBibleVersion = version;
+			await this.saveSettings();
+		}
+	};
 
 	async onload() {
 		// Add this at the beginning of onload
@@ -198,7 +208,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async getCitationFromUser(): Promise<string | null> {
 		return new Promise((resolve) => {
-			const prompt = new BibleCitationPromptModal(this.app, resolve);
+			const prompt = new BibleCitationPromptModal(this.app, resolve, this.preferredVersionStore);
 			prompt.open();
 		});
 	}
@@ -260,7 +270,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async getBibleVersionFromUserChangeExistingCitationsVersion(): Promise<string | null> {
 		return new Promise((resolve) => {
-			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve);
+			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve, this.preferredVersionStore);
 			prompt.open();
 		});
 
@@ -268,7 +278,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async getBibleVersionFromUserPlainTextCitationCase(): Promise<string | null> {
 		return new Promise((resolve) => {
-			const prompt = new BibleCitationChangePlainTextCitation(this.app, resolve);
+			const prompt = new BibleCitationChangePlainTextCitation(this.app, resolve, this.preferredVersionStore);
 			prompt.open();
 		});
 
