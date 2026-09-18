@@ -230,9 +230,7 @@ export class TranslateNotes {
             // Extract and replace Bible Citations 
             let bibleCitations = await extractBibleCitations(processedContent);
 
-            //console.log(bibleCitations);
             
-            //console.log("bibleCitations",bibleCitations);
             const BibleCitationRecoveryMap = new Map<string, string>();
 
             bibleCitations.forEach((match,index)=>{
@@ -242,7 +240,6 @@ export class TranslateNotes {
                 BibleCitationRecoveryMap.set(placeholder,match.fullText)
             })
 
-            //console.log(processedContent);
 
             
             // Extract and replace wiki links
@@ -260,19 +257,16 @@ export class TranslateNotes {
             });
             
             
-            //console.log(processedContent)
             
             const selectedModel = model || 'gpt-4o' as OpenAIModel;
             const maxTokens = MODEL_TOKEN_LIMITS[selectedModel];
 
             const chunkList = chunkTextByTokens(processedContent, maxTokens, 5);
 
-            console.log("translation initiated")
 
 
             new Notice("Translation initiated",5e3)
 
-            //console.log("chunkList",chunkList)
 
             let translatedContent = "";
 
@@ -293,13 +287,10 @@ export class TranslateNotes {
             
 
 
-            console.log("translation finished")
 
             new Notice("Translation finished",5e3)
 
-            console.log(bibleVersionCitation);
 
-            //console.log(translatedContent);
 
             
            //let translatedContent = processedContent;
@@ -313,7 +304,6 @@ export class TranslateNotes {
             // Restore the Bible Citations in reverse order 
 
             Array.from(BibleCitationRecoveryMap.entries()).forEach(([placeholder,bibleCitation])=>{
-                //console.log(placeholder,bibleCitation);
                 translatedContent = translatedContent.replace(placeholder,bibleCitation);
             });
 
@@ -322,10 +312,10 @@ export class TranslateNotes {
             // Change the version of the bible citations in the document if asked 
             if(bibleVersionCitation != "")
             {
-                translatedContent = await changeBibleCitationVersionInText(translatedContent,bibleVersionCitation);
+                translatedContent = (await changeBibleCitationVersionInText(
+                    this.app, `${this.app.vault.configDir}/plugins/Bible-Meditation-Helper`, translatedContent, bibleVersionCitation)).content;
             }
 
-            //console.log(translatedContent)
 
             // Create new file with translated content
             const newFileName = `${file.parent?.path}/${file.basename}_${targetLang}.${file.extension}`;

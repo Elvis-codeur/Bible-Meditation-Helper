@@ -1,3 +1,4 @@
+import levenshtein from "js-levenshtein";
 import { BOOK_ALIASES, BOOK_ORDER } from "./bible_books_data";
 
 export interface VerseRange {
@@ -16,6 +17,8 @@ export interface ParsedCitation {
     book: string;
     /** Human readable reference (e.g. "I Samuel 3:16-18") */
     label: string;
+    /** Chapter and verses as written, without the book (e.g. "3:16-18") */
+    chapterSpec: string;
     segments: ChapterSegment[];
 }
 
@@ -31,8 +34,7 @@ function stripDiacritics(text: string): string {
     return text.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
-/** Return the canonical book name for a name or abbreviation ("1 Sam.", "Jn", "Genèse"...), or null. */
-export function resolveBook(raw: string): string | null {
+function exactBook(raw: string): string | null {
     const key = raw.toLowerCase().replace(/[\s._]/g, "");
     if (!key) return null;
 
@@ -40,13 +42,46 @@ export function resolveBook(raw: string): string | null {
     if (direct) return direct;
 
     // Roman numeral prefix: "iisamuel" -> "2samuel"
-    const roman = key.match(/^(iii|ii|i)(?=[a-zÀ-ɏ])/);
+    const roman = key.match(/^(iii|ii|i)(?=[a-z\u00c0-\u024f])/);
     if (roman) {
         const digit = String(roman[1].length);
         const rest = key.slice(roman[1].length);
         return BOOK_ALIASES[digit + rest] ?? BOOK_ALIASES[stripDiacritics(digit + rest)] ?? null;
     }
     return null;
+}
+
+/**
+ * Return the canonical book name for a name or abbreviation ("1 Sam.", "Jn", "Genèse"...), or null.
+ * With `fuzzy`, small typing errors are corrected ("judge" -> Judges) when the closest book is unambiguous.
+ */
+export function resolveBook(raw: string, fuzzy = false): string | null {
+    const exact = exactBook(raw);
+    if (exact || !fuzzy) return exact;
+
+    const key = stripDiacritics(raw.toLowerCase().replace(/[\s._]/g, ""));
+    if (key.length < 3) return null;
+
+    // "judge" is the beginning of "judges" (and not of "jude"): a unique book starting with the input wins
+    const prefixed = new Set(Object.entries(BOOK_ALIASES)
+        .filter(([alias]) => stripDiacritics(alias).startsWith(key))
+        .map(([, book]) => book));
+    if (prefixed.size === 1) return [...prefixed][0];
+
+    const tolerance = key.length <= 5 ? 1 : 2;
+
+    let best = Infinity;
+    let books = new Set<string>();
+    for (const [alias, book] of Object.entries(BOOK_ALIASES)) {
+        const distance = levenshtein(key, stripDiacritics(alias));
+        if (distance < best) {
+            best = distance;
+            books = new Set([book]);
+        } else if (distance === best) {
+            books.add(book);
+        }
+    }
+    return best <= tolerance && books.size === 1 ? [...books][0] : null;
 }
 
 /** "43_John" style folder name of a canonical book */
@@ -117,7 +152,7 @@ const INHERITED_BOOK = /^(\d{1,3})\s*:\s*(.*)$/;
  * "Psalms 23:1-" (up to the end of the chapter) or several references separated by ";"
  * ("John 3:16; Rom 5:8; 6:1"). A reference without verses ("John 3") designates the whole chapter.
  */
-export function parseCitations(reference: string): ParsedCitation[] {
+export function parseCitations(reference: string, fuzzy = false): ParsedCitation[] {
     const result: ParsedCitation[] = [];
     let previousBook: string | null = null;
 
@@ -136,7 +171,7 @@ export function parseCitations(reference: string): ParsedCitation[] {
             verses = inherited[2];
         } else {
             const m = part.match(BOOK_CHAPTER);
-            book = m ? resolveBook(m[1]) : null;
+            book = m ? resolveBook(m[1], fuzzy) : null;
             if (!m || !book) {
                 throw new Error(`Invalid Bible citation: "${part}"`);
             }
@@ -155,6 +190,7 @@ export function parseCitations(reference: string): ParsedCitation[] {
         result.push({
             book,
             label: `${bookDisplayName(book)} ${chapter}${cleaned === "" ? "" : ":" + cleaned}`,
+            chapterSpec: `${chapter}${cleaned === "" ? "" : ":" + cleaned}`,
             segments,
         });
     }

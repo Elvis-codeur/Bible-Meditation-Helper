@@ -1,19 +1,19 @@
 import { App, MarkdownPostProcessorContext, Modal, Notice, Plugin, TFile, Vault } from "obsidian";
 
 import BibleCitationGetter, { changeBibleCitationVersionInText, convertPlainCitationsToPluggingCitationsInText } from "./bible_citation_getter";
-import path from "path";
 import { BibleCitationChangePlainTextCitation, BibleCitationPromptModal, BibleCitationVersionChangePromptModal } from "./prompt_modals";
 import { TranslateNotes, } from "./translate_not";
 import { TranslationModal } from "./prompt_modals"
 import { BibleCitationSettingTab } from './settings-tab';
 import { BibleCitationPluginSettings, CalloutBlock } from "./type_definitions";
-import { BibleCitation } from "./constants";
+import { BibleCitation, pluginCallout } from "./constants";
+import { DEFAULT_VERSIONS } from "./bible_versions";
+import { changeCitationsVersion } from "./citation_text";
+import { CitationSuggest } from "./citation_suggest";
 
 
 
-//const init,{ parse, PlaceholderRegistry, replaceAllCallouts,replaceCalloutsByType } = require('md-parser-wasm-web');
 
-//import init, { parse, PlaceholderRegistry, replaceAllCallouts, replaceCalloutsByType } from 'md-parser-wasm-web';
 
 
 export default class BibleCitationPlugin extends Plugin {
@@ -33,8 +33,29 @@ export default class BibleCitationPlugin extends Plugin {
 			geminiApiKey: '',
 			deeplApiKey: '',
 			googleTranslateApiKey: '',
-			customTranslationPrompts: []  // initialize with empty array
+			customTranslationPrompts: [],  // initialize with empty array
+			translationsOutputFolder: '',
+			preferredBibleVersion: '',
+			enableCitationSuggest: false
 		}, await this.loadData());
+	}
+
+	/** Folder of the plugin in the vault (contains the Bible data) */
+	get pluginDir(): string {
+		return this.manifest.dir ?? `${this.app.vault.configDir}/plugins/Bible-Meditation-Helper`;
+	}
+
+	preferredVersionStore = {
+		get: () => this.settings.preferredBibleVersion || undefined,
+		set: async (version: string) => {
+			this.settings.preferredBibleVersion = version;
+			await this.saveSettings();
+		}
+	};
+
+	async getBibleVersions(): Promise<string[]> {
+		const found = await new BibleCitationGetter({ app: this.app, pluginDir: this.pluginDir }).getAvailableVersions();
+		return found.length > 0 ? found.map(v => v.version) : DEFAULT_VERSIONS;
 	}
 
 	async onload() {
@@ -107,7 +128,53 @@ export default class BibleCitationPlugin extends Plugin {
 		)
 
 
+		// Right click on a citation: change the version of this citation only
+		this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor) => {
+			const block = this.findCitationBlock(editor, editor.getCursor().line);
+			if (!block) return;
+			menu.addItem(item => item
+				.setTitle("Change the Bible version of this citation")
+				.setIcon("book-open")
+				.onClick(() => this.changeSingleCitationVersion(editor, block)));
+		}));
+
+		this.registerEditorSuggest(new CitationSuggest(this));
+
 		this.loadStyles();
+	}
+
+	/** Lines of the plugin citation callout the given line belongs to, or null */
+	findCitationBlock(editor: any, line: number): { start: number, end: number } | null {
+		const isQuote = (i: number) => editor.getLine(i).startsWith(">");
+		const isStart = (i: number) => editor.getLine(i).replace(/^>\s*/, "").startsWith(pluginCallout);
+		if (!isQuote(line)) return null;
+
+		let start = line;
+		while (start >= 0 && isQuote(start) && !isStart(start)) start--;
+		if (start < 0 || !isQuote(start) || !isStart(start)) return null;
+
+		let end = start + 1;
+		while (end < editor.lineCount() && isQuote(end) && !isStart(end)) end++;
+		return line < end ? { start, end } : null;
+	}
+
+	async changeSingleCitationVersion(editor: any, block: { start: number, end: number }) {
+		const version = await this.getBibleVersionFromUserChangeExistingCitationsVersion();
+		if (!version) return;
+
+		const lastLine = editor.lineCount();
+		const from = { line: block.start, ch: 0 };
+		const to = block.end >= lastLine ? { line: lastLine - 1, ch: editor.getLine(lastLine - 1).length } : { line: block.end, ch: 0 };
+		let text = editor.getRange(from, to);
+		if (block.end < lastLine) { /* the block keeps its final newline */ } else { text += "\n"; }
+
+		const report = await changeCitationsVersion(text, version, new BibleCitationGetter({ app: this.app, pluginDir: this.pluginDir }).render);
+		if (report.failed.length > 0) {
+			new Notice(`Could not change the version: ${report.failed[0].error}`, 6000);
+			return;
+		}
+		editor.replaceRange(block.end >= lastLine ? report.content.replace(/\n$/, "") : report.content, from, to);
+		new Notice(`Citation updated to version: ${version}`);
 	}
 
 	
@@ -138,7 +205,7 @@ export default class BibleCitationPlugin extends Plugin {
 					result.targetLang,
 					result.bibleVersion,
 					result.customPrompt,
-					result.iaModel
+					result.model
 				);
 
 				new Notice(`Translation completed for ${activeFile.basename}`);
@@ -154,11 +221,15 @@ export default class BibleCitationPlugin extends Plugin {
 	}
 
 	async loadStyles() {
-		const cssFile = await this.app.vault.adapter.read(path.join(this.app.vault.configDir,
-			"plugins", "Bible-Meditation-Helper", 'styles/citation_callout_style.css'));
-		const style = document.createElement('citation_callout_style');
-		style.textContent = cssFile;
-		document.head.appendChild(style);
+		try {
+			const cssFile = await this.app.vault.adapter.read(`${this.pluginDir}/styles/citation_callout_style.css`);
+			const style = document.createElement('style');
+			style.textContent = cssFile;
+			document.head.appendChild(style);
+			this.register(() => style.remove());
+		} catch (error) {
+			console.error("Could not load the citation callout style", error);
+		}
 	}
 
 	async convertPlainCitationsToPluggingCitations() {
@@ -192,19 +263,19 @@ export default class BibleCitationPlugin extends Plugin {
 			return;
 		}
 
-		let newFileContent = await convertPlainCitationsToPluggingCitationsInText(content, newBibleCitationVersion);
+		const report = await convertPlainCitationsToPluggingCitationsInText(this.app, this.pluginDir, content, newBibleCitationVersion);
+		this.notifyReport(report, "converted");
 
-		await this.app.vault.modify(activeFile, newFileContent);
-
-
-		//console.log(newBibleCitationVersion);
+		if (report.converted > 0) {
+			await this.app.vault.modify(activeFile, report.content);
+		}
 
 	}
 
 
 	async getCitationFromUser(): Promise<BibleCitation | null> {
 		return new Promise((resolve) => {
-			const prompt = new BibleCitationPromptModal(this.app, resolve);
+			const prompt = new BibleCitationPromptModal(this.app, resolve, this);
 			prompt.open();
 		});
 	}
@@ -254,11 +325,20 @@ export default class BibleCitationPlugin extends Plugin {
 		}
 
 
-		let newContent = await changeBibleCitationVersionInText(content, newBibleCitationVersion);
+		const report = await changeBibleCitationVersionInText(this.app, this.pluginDir, content, newBibleCitationVersion);
+		this.notifyReport(report, `updated to version ${newBibleCitationVersion}`);
 
-		await this.app.vault.modify(activeFile, newContent);
+		if (report.converted > 0) {
+			await this.app.vault.modify(activeFile, report.content);
+		}
+	}
 
-		new Notice(`Bible citations updated to version: ${newBibleCitationVersion}`);
+	notifyReport(report: { converted: number, failed: { text: string, error: string }[] }, action: string) {
+		let message = `${report.converted} Bible citation(s) ${action}.`;
+		if (report.failed.length > 0) {
+			message += `\n${report.failed.length} failed: ` + report.failed.map(f => `${f.text} (${f.error})`).join("; ");
+		}
+		new Notice(message, report.failed.length > 0 ? 8000 : 4000);
 	}
 
 
@@ -266,7 +346,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async getBibleVersionFromUserChangeExistingCitationsVersion(): Promise<string | null> {
 		return new Promise((resolve) => {
-			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve);
+			const prompt = new BibleCitationVersionChangePromptModal(this.app, resolve, this);
 			prompt.open();
 		});
 
@@ -274,7 +354,7 @@ export default class BibleCitationPlugin extends Plugin {
 
 	async getBibleVersionFromUserPlainTextCitationCase(): Promise<string | null> {
 		return new Promise((resolve) => {
-			const prompt = new BibleCitationChangePlainTextCitation(this.app, resolve);
+			const prompt = new BibleCitationChangePlainTextCitation(this.app, resolve, this);
 			prompt.open();
 		});
 
@@ -286,8 +366,13 @@ export default class BibleCitationPlugin extends Plugin {
 		const citation = await this.getCitationFromUser();
 		if (!citation) return;
 
-		this.addCitationDiv(citation);
-		new Notice(`Added citation: ${citation.reference}`);
+		try {
+			await this.addCitationDiv(citation);
+			new Notice(`Added citation: ${citation.reference}`);
+		} catch (error) {
+			console.error(error);
+			new Notice(`Could not add the citation "${citation.reference}": ${error.message}`, 8000);
+		}
 	}	/* Add this CSS to style the bible citation div and tabs */
 
 
@@ -307,7 +392,7 @@ export default class BibleCitationPlugin extends Plugin {
 		const editor = (view as any).editor;
 		const cursor = editor.getCursor();
 
-		let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app }).getCitation(citation);
+		let got_citation: { citation: string } = await new BibleCitationGetter({ app: this.app, pluginDir: this.pluginDir }).getCitation(citation);
 		if (!got_citation) {
 			new Notice("Failed to get citation.");
 			return;

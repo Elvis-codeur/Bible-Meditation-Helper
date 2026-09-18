@@ -1,156 +1,63 @@
 import { App, Modal, Notice, TextAreaComponent, TextComponent, TFolder, TFile } from "obsidian";
 import { TranslationModel, TranslationService } from "./type_definitions";
+import { renderVersionPicker, VersionHost } from './version_picker';
 import { BibleVersion, CitationStyle, InlineQuoteStyle, BibleCitation, mapEnglishToFrenchBibleBooks, mapBibleVersionToLanguage } from './constants';
 
 class BibleCitationVersionChangePromptModal extends Modal {
-	private resolve: (value: string | null) => void;
-
-	constructor(app: App, resolve: (value: string | null) => void) {
+	constructor(app: App, private resolve: (value: string | null) => void, private host?: VersionHost) {
 		super(app);
-		this.resolve = resolve;
 	}
 
-	onOpen() {
+	async onOpen() {
 		const { contentEl } = this;
+		contentEl.createEl("h2", { text: "Change the version of your Bible citations" });
+		contentEl.createEl("p", {
+			text: "Choose the Bible version to which you want to convert your Bible citations (double click to set your preferred version)"
+		}).addClass("bmh-modal-description");
 
-		// Title
-		contentEl.createEl("h2", { text: "Enter the new Bible version : Change the version of your Bible citations in the text" });
-
-		// Description
-		const description = contentEl.createEl("p", {
-			text: "Choose the bible version to which you want convert your bible citations"
-		});
-		description.style.marginBottom = "50px";
-		description.style.fontStyle = "italic";
-		description.style.color = "#667";
-		description.style.fontSize = "25px";
-		description.style.height = "30px";
-
-		// Select element
-		const selectEl = contentEl.createEl("select");
-		selectEl.style.padding = "8px";
-		selectEl.style.margin = "10px 0";
-		selectEl.style.width = "100%";
-		selectEl.style.border = "1px solid #ccc";
-		selectEl.style.borderRadius = "4px";
-		selectEl.style.height = "70px";
-		selectEl.style.boxSizing = "border-box";
-
-		const versions = ["ESV", "KJV", "LSG10"];
-		versions.forEach(version => {
-			const optionEl = selectEl.createEl("option", { text: version });
-			optionEl.value = version;
-			selectEl.appendChild(optionEl);
-		});
-
-		// Submit button
-		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		submitButton.style.marginTop = "12px";
-		submitButton.style.padding = "8px 16px";
-		submitButton.style.backgroundColor = "#3a7bfd";
-		submitButton.style.color = "#fff";
-		submitButton.style.border = "none";
-		submitButton.style.borderRadius = "4px";
-		submitButton.style.cursor = "pointer";
-
-		submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
-		submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
-
-		// Submit logic
+		const picker = await renderVersionPicker(contentEl, this.host);
+		const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta bmh-submit" });
 		submitButton.onclick = () => {
-			const bibleVersion = selectEl.value.trim();
-			this.resolve(bibleVersion || null);
+			this.submitted = true;
+			this.resolve(picker.getValue() || null);
 			this.close();
 		};
-
-		// Append elements to panel
-		contentEl.appendChild(selectEl);
-		contentEl.appendChild(submitButton);
-
-
 	}
 
+	private submitted = false;
 
 	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+		if (!this.submitted) this.resolve(null);
+		this.contentEl.empty();
 	}
 }
 
-
-
-
 class BibleCitationChangePlainTextCitation extends Modal {
-	private resolve: (value: string | null) => void;
+	private submitted = false;
 
-	constructor(app: App, resolve: (value: string | null) => void) {
+	constructor(app: App, private resolve: (value: string | null) => void, private host?: VersionHost) {
 		super(app);
-		this.resolve = resolve;
 	}
 
-	onOpen() {
+	async onOpen() {
 		const { contentEl } = this;
+		contentEl.createEl("h2", { text: "Convert plain citations" });
+		contentEl.createEl("p", {
+			text: "Choose the Bible version in which you want your plain citations to be cited (double click to set your preferred version)"
+		}).addClass("bmh-modal-description");
 
-		// Title
-		contentEl.createEl("h2", { text: "Enter the Bible version to which you want your plain citations to be cited in" });
-
-		// Description
-		const description = contentEl.createEl("p", {
-			text: "Choose the bible version in which you want your plain citations to be cited in"
-		});
-		description.style.marginBottom = "50px";
-		description.style.fontStyle = "italic";
-		description.style.color = "#667";
-		description.style.fontSize = "15px";
-
-		// Select element
-		const selectEl = contentEl.createEl("select");
-		selectEl.style.padding = "8px";
-		selectEl.style.margin = "10px 0";
-		selectEl.style.width = "100%";
-		selectEl.style.border = "1px solid #ccc";
-		selectEl.style.borderRadius = "4px";
-		selectEl.style.height = "100px";
-		selectEl.style.boxSizing = "border-box";
-
-		const versions = ["ESV", "KJV", "LSG10"];
-		versions.forEach(version => {
-			const optionEl = selectEl.createEl("option", { text: version });
-			optionEl.value = version;
-			selectEl.appendChild(optionEl);
-		});
-
-		// Submit button
-		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		submitButton.style.marginTop = "12px";
-		submitButton.style.padding = "8px 16px";
-		submitButton.style.backgroundColor = "#3a7bfd";
-		submitButton.style.color = "#fff";
-		submitButton.style.border = "none";
-		submitButton.style.borderRadius = "4px";
-		submitButton.style.cursor = "pointer";
-
-		submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
-		submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
-
-		// Submit logic
+		const picker = await renderVersionPicker(contentEl, this.host);
+		const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta bmh-submit" });
 		submitButton.onclick = () => {
-			const bibleVersion = selectEl.value.trim();
-			this.resolve(bibleVersion || null);
+			this.submitted = true;
+			this.resolve(picker.getValue() || null);
 			this.close();
 		};
-
-		// Append elements to panel
-		contentEl.appendChild(selectEl);
-		contentEl.appendChild(submitButton);
-
-
 	}
 
-
 	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+		if (!this.submitted) this.resolve(null);
+		this.contentEl.empty();
 	}
 }
 
@@ -158,13 +65,15 @@ class BibleCitationChangePlainTextCitation extends Modal {
 class BibleCitationPromptModal extends Modal {
     private resolve: (value: BibleCitation | null) => void;
     private selectedVersion: BibleVersion = BibleVersion.ESV;
+    private submitted = false;
+    private versionPicker: { getValue: () => string } | null = null;
     private citationStyle: CitationStyle = CitationStyle.BLOCK;
     private inlineStyle: InlineQuoteStyle = InlineQuoteStyle.ENGLISH;
     private existingCitations: string[] = [];
     private suggestionContainer: HTMLElement | null = null;
     private selectedSuggestionIndex: number = -1;
 
-    constructor(app: App, resolve: (value: BibleCitation | null) => void) {
+    constructor(app: App, resolve: (value: BibleCitation | null) => void, private host?: VersionHost) {
         super(app);
         this.resolve = resolve;
     }
@@ -259,11 +168,9 @@ class BibleCitationPromptModal extends Modal {
 
         // Suggestion dropdown
         this.suggestionContainer = inputContainer.createDiv();
-        this.suggestionContainer.style.position = "absolute";
-        this.suggestionContainer.style.top = "100%";
-        this.suggestionContainer.style.left = "0";
-        this.suggestionContainer.style.right = "0";
-        this.suggestionContainer.style.maxHeight = "200px";
+        this.suggestionContainer.style.position = "relative";
+        this.suggestionContainer.style.marginTop = "4px";
+        this.suggestionContainer.style.maxHeight = "160px";
         this.suggestionContainer.style.overflowY = "auto";
         this.suggestionContainer.style.backgroundColor = "var(--background-primary)";
         this.suggestionContainer.style.border = "1px solid var(--background-modifier-border)";
@@ -282,21 +189,8 @@ class BibleCitationPromptModal extends Modal {
             this.handleKeyNavigation(event, inputEl);
         });
 
-        // Version Cards Container
-        const versionsContainer = contentEl.createDiv();
-        versionsContainer.style.display = 'flex';
-        versionsContainer.style.gap = '10px';
-        versionsContainer.style.marginTop = '20px';
-        versionsContainer.style.marginBottom = '20px';
-
-        // Create version cards
-        const versions = Object.values(BibleVersion);
-        versions.forEach(version => {
-            const card = this.createVersionCard(version, versionsContainer);
-            if (version === this.selectedVersion) {
-                card.addClass('selected-version');
-            }
-        });
+        // Version cards: they are in the flow, the suggestion list above pushes them down instead of covering them
+        this.versionPicker = await renderVersionPicker(contentEl, this.host);
 
         // Citation Style Options
         const styleContainer = contentEl.createDiv();
@@ -351,6 +245,7 @@ class BibleCitationPromptModal extends Modal {
             }
             
             const citation = this.formatCitation(reference);
+            this.submitted = true;
             this.resolve(citation);
             this.close();
         };
@@ -380,29 +275,6 @@ class BibleCitationPromptModal extends Modal {
         inputEl.style.boxSizing = "border-box";
         inputEl.style.height = "40px";
         inputEl.focus();
-    }
-
-    private createVersionCard(version: BibleVersion, container: HTMLElement): HTMLElement {
-        const card = container.createDiv({ cls: 'version-card' });
-        card.setText(version);
-        card.style.padding = '15px 25px';
-        card.style.border = '1px solid #ccc';
-        card.style.borderRadius = '4px';
-        card.style.cursor = 'pointer';
-        card.style.backgroundColor = version === this.selectedVersion ? '#3a7bfd' : '#fff';
-        card.style.color = version === this.selectedVersion ? '#fff' : '#000';
-
-        card.addEventListener('click', () => {
-            container.findAll('.version-card').forEach(c => {
-                c.style.backgroundColor = '#fff';
-                c.style.color = '#000';
-            });
-            card.style.backgroundColor = '#3a7bfd';
-            card.style.color = '#fff';
-            this.selectedVersion = version;
-        });
-
-        return card;
     }
 
     private createCitationStyleCard(style: CitationStyle, label: string, container: HTMLElement, selected: boolean): HTMLElement {
@@ -490,11 +362,12 @@ class BibleCitationPromptModal extends Modal {
 
     private formatCitation(reference: string): BibleCitation {
 
-        let fullText: string = `${reference}||${this.selectedVersion}`;
+        const version = (this.versionPicker?.getValue() ?? this.selectedVersion) as BibleVersion;
+        let fullText: string = `${reference}||${version}`;
 
         return {
             reference,
-            version: this.selectedVersion,
+            version,
             style: this.citationStyle,
             inlineStyle: this.citationStyle === CitationStyle.INLINE ? this.inlineStyle : undefined,
             fullText,// Always "reference||version" format
@@ -614,6 +487,8 @@ class BibleCitationPromptModal extends Modal {
     }
 
     onClose() {
+        // Resolve the pending promise when the window is dismissed without submitting
+        if (!this.submitted) this.resolve(null);
         const { contentEl } = this;
         contentEl.empty();
     }
@@ -637,7 +512,7 @@ class TranslationModal extends Modal {
 		service: TranslationService;
 		targetLang: string;
 		customPrompt?: string;
-		openAIModel?: TranslationModel;
+		model?: TranslationModel;
 		bibleVersion:string;
 
 	}) => void;
@@ -647,7 +522,7 @@ class TranslationModal extends Modal {
 		service: TranslationService;
 		targetLang: string;
 		customPrompt?: string;
-		iaModel?: TranslationModel;
+		model?: TranslationModel;
 	}) => void,
 		private savedPrompts: string[] = [] // pass from plugin
 

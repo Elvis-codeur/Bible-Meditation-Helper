@@ -146,3 +146,28 @@ export async function changeCitationsVersion(content: string, version: string, r
     report.content = pieces.join("");
     return report;
 }
+
+export interface CitationBlock {
+    /** The link of the block, e.g. "John 3_16|John 3:16 | ESV" */
+    reference: string;
+    /** The whole callout, with its verses */
+    fullText: string;
+    startIndex: number;
+    endIndex: number;
+}
+
+/** Find the plugin citation callouts of a text, the last one first (to replace them safely) */
+export function extractCitationBlocks(text: string): CitationBlock[] {
+    const regex = new RegExp(CITATION_BLOCK.source, CITATION_BLOCK.flags);
+    const blocks: CitationBlock[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+        blocks.push({
+            reference: match[1],
+            fullText: match[0],
+            startIndex: match.index,
+            endIndex: match.index + match[0].length,
+        });
+    }
+    return blocks.reverse();
+}
