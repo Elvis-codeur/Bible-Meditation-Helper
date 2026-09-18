@@ -31,3 +31,16 @@ If your plugin does not need CSS, delete this file.
 .citation-content {
     font-size: 14px;
 }
+
+/* Bible version picker */
+.bmh-version-picker { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.bmh-version-card {
+    padding: 12px 22px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.bmh-version-card.bmh-selected { background-color: var(--interactive-accent); color: var(--text-on-accent); }
+.bmh-modal-description { font-style: italic; color: var(--text-muted); margin-bottom: 12px; }
+.bmh-submit { margin-top: 12px; }

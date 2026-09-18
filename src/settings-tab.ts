@@ -16,6 +16,28 @@ export class BibleCitationSettingTab extends PluginSettingTab {
         containerEl.createEl('h2', { text: 'Bible Meditation Helper Settings' });
 
         new Setting(containerEl)
+            .setName('Preferred Bible version')
+            .setDesc('Selected by default in the citation windows. You can also double click a version in these windows.')
+            .addDropdown(async dropdown => {
+                for (const version of await this.plugin.getBibleVersions()) dropdown.addOption(version, version);
+                dropdown.setValue(this.plugin.settings.preferredBibleVersion || '')
+                    .onChange(async (value) => {
+                        this.plugin.settings.preferredBibleVersion = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
+            .setName('Suggest citations while typing')
+            .setDesc('Propose to turn a reference such as "John 3:16" into a citation as you type it (Enter accepts the suggestion).')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableCitationSuggest)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableCitationSuggest = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName('OpenAI API Key')
             .setDesc('Enter your OpenAI API key')
             .addText(text => text
