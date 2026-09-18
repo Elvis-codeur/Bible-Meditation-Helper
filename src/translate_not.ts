@@ -5,6 +5,8 @@ import axios from 'axios';
 import { requestUrl, RequestUrlResponse } from 'obsidian';
 import { MODEL_TOKEN_LIMITS, OpenAIModel, TranslationModel, TranslationService, TranslationSettings } from './type_definitions';
 import { chunkTextByTokens } from './text_manipulations';
+import { changeBibleCitationVersionInText, extractBibleCitations } from './bible_citation_getter';
+import { text } from 'stream/consumers';
 
 
 
@@ -215,36 +217,60 @@ export class TranslateNotes {
 
 
 
-    async translateNote(file: TFile, service: TranslationService, targetLang: string, customPrompt?: string, model?: TranslationModel): Promise<void> {
+    async translateNote(file: TFile, service: TranslationService, targetLang: string,bibleVersionCitation:string, customPrompt?: string, model?: TranslationModel,): Promise<void> {
         try {
             this.validateApiKey(service);
+
+
             let fileContent = await this.app.vault.read(file);
 
-            // Extract and replace wiki links
-            const matcheList = this.extractWikiLinks(fileContent);
             let processedContent = fileContent;
+
+
+            // Extract and replace Bible Citations 
+            let bibleCitations = await extractBibleCitations(processedContent);
+
+            
+            const BibleCitationRecoveryMap = new Map<string, string>();
+
+            bibleCitations.forEach((match,index)=>{
+                const placeholder = `<<BIBLE_CITATION_${index}>>`
+                processedContent =  processedContent.slice(0,match.startIndex) + `${placeholder}` +
+                processedContent.slice(match.endIndex + 1);
+                BibleCitationRecoveryMap.set(placeholder,match.fullText)
+            })
+
+
+            
+            // Extract and replace wiki links
+            const matcheList = this.extractWikiLinks(processedContent);
+
             const linksRecoveryMap = new Map<string, string>();
 
             // Process matches in reverse order to handle nested links correctly
             matcheList.forEach((match, index) => {
                 const placeholder = `[[WIKILINK_${index}]]`; // More unique placeholder
                 processedContent = processedContent.slice(0, match.beginIndex) +
-                    placeholder +
+                    `${placeholder}` +
                     processedContent.slice(match.endIndex + 1);
                 linksRecoveryMap.set(placeholder, match.fullText);
             });
-
-            //console.log(processedContent)
-
-
-
-
+            
+            
+            
             const selectedModel = model || 'gpt-4o' as OpenAIModel;
             const maxTokens = MODEL_TOKEN_LIMITS[selectedModel];
-            const chunkList = chunkTextByTokens(processedContent, maxTokens, 500);
 
-            console.log("translation initiated")
+            const chunkList = chunkTextByTokens(processedContent, maxTokens, 5);
+
+
+
+            new Notice("Translation initiated",5e3)
+
+
             let translatedContent = "";
+
+            
 
                 // Translate the processed content
             for (var chunk of chunkList) {
@@ -258,18 +284,44 @@ export class TranslateNotes {
                 translatedContent += translatedChunck;
             }
 
+            
 
-            console.log("translation finished")
 
 
-            // Restore wiki links in reverse order
+            new Notice("Translation finished",5e3)
+
+
+
+            
+           //let translatedContent = processedContent;
+
+
+           // Restore wiki links in reverse order
             Array.from(linksRecoveryMap.entries()).forEach(([placeholder, originalLink]) => {
                 translatedContent = translatedContent.replace(placeholder, originalLink);
             });
 
+            // Restore the Bible Citations in reverse order 
+
+            Array.from(BibleCitationRecoveryMap.entries()).forEach(([placeholder,bibleCitation])=>{
+                translatedContent = translatedContent.replace(placeholder,bibleCitation);
+            });
+
+
+
+            // Change the version of the bible citations in the document if asked 
+            if(bibleVersionCitation != "")
+            {
+                translatedContent = (await changeBibleCitationVersionInText(
+                    this.app, `${this.app.vault.configDir}/plugins/Bible-Meditation-Helper`, translatedContent, bibleVersionCitation)).content;
+            }
+
+
             // Create new file with translated content
             const newFileName = `${file.parent?.path}/${file.basename}_${targetLang}.${file.extension}`;
+
             await this.app.vault.create(newFileName, translatedContent);
+
 
         } catch (error) {
             if (error instanceof Error) {

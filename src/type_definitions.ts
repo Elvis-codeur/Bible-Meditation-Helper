@@ -68,6 +68,7 @@ interface BibleCitationPluginSettings {
     customTranslationPrompts: string[]; // Now stores multiple prompts
     translationsOutputFolder:string;
     preferredBibleVersion:string;
+    enableCitationSuggest:boolean;
 }
 interface TranslationSettings {
     openaiApiKey: string;
@@ -76,6 +77,14 @@ interface TranslationSettings {
     deeplApiKey: string;
     googleTranslateApiKey: string;
     translationsOutputFolder:string;
+}
+
+interface Verse {
+  verse_number:number;
+  verse_text:string;
+  /** Label shown instead of the verse number (e.g. "4:2" when a citation spans several chapters) */
+  verse_label?:string;
+
 }
 
 
@@ -89,6 +98,7 @@ export type{
     TranslationSettings,
     BibleCitationPluginSettings,
     CalloutBlock,
+    Verse
 }
 
 export {

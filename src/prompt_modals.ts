@@ -1,167 +1,528 @@
-import { App, Modal, Notice, TextAreaComponent, TextComponent } from "obsidian";
+import { App, Modal, Notice, TextAreaComponent, TextComponent, TFolder, TFile } from "obsidian";
 import { TranslationModel, TranslationService } from "./type_definitions";
-
-const BIBLE_VERSIONS = ["ESV", "KJV", "LSG10"];
-
-/** Lets the modals read and store the version the user prefers (double click on a version). */
-interface PreferredVersionStore {
-	get: () => string | undefined;
-	set: (version: string) => void | Promise<void>;
-}
-
-/**
- * Render the Bible versions as a row of buttons (no dropdown, so nothing can cover them).
- * A click selects a version, a double click also makes it the preferred one.
- */
-function renderVersionPicker(container: HTMLElement, store?: PreferredVersionStore) {
-	let selected = store?.get() && BIBLE_VERSIONS.includes(store.get() as string) ? store.get() as string : BIBLE_VERSIONS[0];
-	const picker = container.createDiv({ cls: "bmh-version-picker" });
-	const buttons = new Map<string, HTMLButtonElement>();
-
-	const refresh = () => {
-		buttons.forEach((button, version) => {
-			button.toggleClass("mod-cta", version === selected);
-			button.setText(version === store?.get() ? `★ ${version}` : version);
-		});
-	};
-
-	BIBLE_VERSIONS.forEach(version => {
-		const button = picker.createEl("button", { text: version, cls: "bmh-version-button" });
-		button.title = "Click to select, double click to make it your preferred version";
-		button.onclick = () => { selected = version; refresh(); };
-		button.ondblclick = async () => {
-			selected = version;
-			if (store) {
-				await store.set(version);
-				new Notice(`${version} is now your preferred Bible version`);
-			}
-			refresh();
-		};
-		buttons.set(version, button);
-	});
-	refresh();
-
-	return { getValue: () => selected };
-}
-
-function styleSubmit(button: HTMLButtonElement) {
-	button.addClass("mod-cta");
-	button.style.marginTop = "12px";
-}
+import { renderVersionPicker, VersionHost } from './version_picker';
+import { BibleVersion, CitationStyle, InlineQuoteStyle, BibleCitation, mapEnglishToFrenchBibleBooks, mapBibleVersionToLanguage } from './constants';
 
 class BibleCitationVersionChangePromptModal extends Modal {
-	constructor(app: App, private resolve: (value: string | null) => void, private store?: PreferredVersionStore) {
+	constructor(app: App, private resolve: (value: string | null) => void, private host?: VersionHost) {
 		super(app);
 	}
 
-	onOpen() {
+	async onOpen() {
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: "Change the version of your Bible citations" });
 		contentEl.createEl("p", {
 			text: "Choose the Bible version to which you want to convert your Bible citations (double click to set your preferred version)"
 		}).addClass("bmh-modal-description");
 
-		const picker = renderVersionPicker(contentEl, this.store);
-		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		styleSubmit(submitButton);
+		const picker = await renderVersionPicker(contentEl, this.host);
+		const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta bmh-submit" });
 		submitButton.onclick = () => {
+			this.submitted = true;
 			this.resolve(picker.getValue() || null);
 			this.close();
 		};
 	}
 
+	private submitted = false;
+
 	onClose() {
+		if (!this.submitted) this.resolve(null);
 		this.contentEl.empty();
 	}
 }
 
 class BibleCitationChangePlainTextCitation extends Modal {
-	constructor(app: App, private resolve: (value: string | null) => void, private store?: PreferredVersionStore) {
+	private submitted = false;
+
+	constructor(app: App, private resolve: (value: string | null) => void, private host?: VersionHost) {
 		super(app);
 	}
 
-	onOpen() {
+	async onOpen() {
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: "Convert plain citations" });
 		contentEl.createEl("p", {
 			text: "Choose the Bible version in which you want your plain citations to be cited (double click to set your preferred version)"
 		}).addClass("bmh-modal-description");
 
-		const picker = renderVersionPicker(contentEl, this.store);
-		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		styleSubmit(submitButton);
+		const picker = await renderVersionPicker(contentEl, this.host);
+		const submitButton = contentEl.createEl("button", { text: "Submit", cls: "mod-cta bmh-submit" });
 		submitButton.onclick = () => {
+			this.submitted = true;
 			this.resolve(picker.getValue() || null);
 			this.close();
 		};
 	}
 
 	onClose() {
-		this.contentEl.empty();
-	}
-}
-
-class BibleCitationPromptModal extends Modal {
-	private submitted = false;
-
-	constructor(app: App, private resolve: (value: string | null) => void, private store?: PreferredVersionStore) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: "Enter Bible Citation" });
-		contentEl.createEl("p", {
-			text: "Enter a Bible verse (e.g. John 3:16, John 3:16-18 or John 3:16,18,20–22) and choose a version (double click to set your preferred version).",
-		}).addClass("bmh-modal-description");
-
-		const inputEl = contentEl.createEl("input", { type: "text", placeholder: "e.g. John 3:16", cls: "bmh-citation-input" });
-		inputEl.focus();
-
-		const picker = renderVersionPicker(contentEl, this.store);
-		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		styleSubmit(submitButton);
-
-		inputEl.addEventListener("keydown", (event) => {
-			if (event.key === "Enter") {
-				submitButton.click();
-			}
-		});
-
-		submitButton.onclick = () => {
-			this.submitted = true;
-			this.resolve(inputEl.value.trim() + "||" + picker.getValue());
-			this.close();
-		};
-	}
-
-	onClose() {
-		// Resolve the pending promise when the modal is dismissed without submitting
 		if (!this.submitted) this.resolve(null);
 		this.contentEl.empty();
 	}
 }
 
+
+class BibleCitationPromptModal extends Modal {
+    private resolve: (value: BibleCitation | null) => void;
+    private selectedVersion: BibleVersion = BibleVersion.ESV;
+    private submitted = false;
+    private versionPicker: { getValue: () => string } | null = null;
+    private citationStyle: CitationStyle = CitationStyle.BLOCK;
+    private inlineStyle: InlineQuoteStyle = InlineQuoteStyle.ENGLISH;
+    private existingCitations: string[] = [];
+    private suggestionContainer: HTMLElement | null = null;
+    private selectedSuggestionIndex: number = -1;
+
+    constructor(app: App, resolve: (value: BibleCitation | null) => void, private host?: VersionHost) {
+        super(app);
+        this.resolve = resolve;
+    }
+
+    async loadExistingCitations(): Promise<void> {
+        const citationsFolder = 'Bible-Meditation-Helper/citations';
+        const folder = this.app.vault.getAbstractFileByPath(citationsFolder);
+
+        if (folder instanceof TFolder) {
+            const filenames = folder.children
+                .filter((file) => file instanceof TFile && file.extension === 'md')
+                .map((file) => file.name.replace('.md', ''));
+
+            // Create both English and French versions of each citation
+            const allCitations: string[] = [];
+            filenames.forEach(filename => {
+                const englishVersion = this.parseFilenameToReadable(filename, 'en');
+                const frenchVersion = this.parseFilenameToReadable(filename, 'fr');
+
+                allCitations.push(englishVersion);
+                // Only add French version if it's different from English
+                if (frenchVersion !== englishVersion) {
+                    allCitations.push(frenchVersion);
+                }
+            });
+
+            this.existingCitations = allCitations.sort();
+        }
+    }
+
+    private parseFilenameToReadable(filename: string, languageCode?: string): string {
+        // Extract book name and citation parts
+        // Examples: "I_Samuel 1_1" -> "I Samuel 1:1" or "1 Samuel 1:1" (French)
+        //           "Song_of_Solomon 1_1-2" -> "Song of Solomon 1:1-2" or "Cantique des Cantiques 1:1-2" (French)
+
+        // Split by space to separate book from chapter_verse
+        const parts = filename.split(' ');
+        if (parts.length < 2) {
+            return filename.replace(/_/g, ' ');
+        }
+
+        const bookName = parts[0]; // e.g., "I_Samuel"
+        let citationPart = parts.slice(1).join(' '); // e.g., "1_1" or "1_1-2"
+
+        // Replace the underscore between chapter and verse with a colon
+        // "1_1" -> "1:1", "1_1-2" -> "1:1-2"
+        citationPart = citationPart.replace(/_/, ':');
+
+        // Use provided languageCode or fall back to selectedVersion
+        const lang = languageCode || (mapBibleVersionToLanguage.get(this.selectedVersion) || 'en');
+        let displayBookName = bookName.replace(/_/g, ' '); // Default: replace underscores
+
+        if (lang === 'fr') {
+            // Try to get French translation
+            const frenchName = mapEnglishToFrenchBibleBooks.get(bookName);
+            if (frenchName) {
+                displayBookName = frenchName;
+            }
+        }
+
+        return `${displayBookName} ${citationPart}`;
+    }
+
+    async onOpen() {
+        const { contentEl } = this;
+
+        // Load existing citations
+        await this.loadExistingCitations();
+
+        // Title
+        contentEl.createEl("h2", { text: "Enter Bible Citation" });
+
+        // Description
+        const description = contentEl.createEl("p", {
+            text: "Please enter a Bible verse (e.g., John 3:16) and choose options below.",
+        });
+        description.style.marginBottom = "12px";
+        description.style.fontStyle = "italic";
+        description.style.color = "#667";
+
+        // Input container for autocomplete
+        const inputContainer = contentEl.createDiv();
+        inputContainer.style.position = "relative";
+        inputContainer.style.marginBottom = "10px";
+
+        // Input element
+        const inputEl = inputContainer.createEl("input", {
+            type: "text",
+            placeholder: "e.g. John 3:16"
+        });
+        this.styleInputField(inputEl);
+
+        // Suggestion dropdown
+        this.suggestionContainer = inputContainer.createDiv();
+        this.suggestionContainer.style.position = "relative";
+        this.suggestionContainer.style.marginTop = "4px";
+        this.suggestionContainer.style.maxHeight = "160px";
+        this.suggestionContainer.style.overflowY = "auto";
+        this.suggestionContainer.style.backgroundColor = "var(--background-primary)";
+        this.suggestionContainer.style.border = "1px solid var(--background-modifier-border)";
+        this.suggestionContainer.style.borderRadius = "4px";
+        this.suggestionContainer.style.zIndex = "1000";
+        this.suggestionContainer.style.display = "none";
+        this.suggestionContainer.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+
+        // Input event listener for autocomplete
+        inputEl.addEventListener("input", () => {
+            this.handleInputChange(inputEl);
+        });
+
+        // Keyboard navigation for suggestions
+        inputEl.addEventListener("keydown", (event) => {
+            this.handleKeyNavigation(event, inputEl);
+        });
+
+        // Version cards: they are in the flow, the suggestion list above pushes them down instead of covering them
+        this.versionPicker = await renderVersionPicker(contentEl, this.host);
+
+        // Citation Style Options
+        const styleContainer = contentEl.createDiv();
+        styleContainer.style.marginTop = '20px';
+        styleContainer.createEl('h3', { text: 'Citation Style' });
+
+        // Citation Style Cards Container
+        const styleCardsContainer = contentEl.createDiv();
+        styleCardsContainer.style.display = 'flex';
+        styleCardsContainer.style.gap = '10px';
+        styleCardsContainer.style.marginTop = '10px';
+        styleCardsContainer.style.marginBottom = '20px';
+
+        // Create citation style cards
+        const blockCard = this.createCitationStyleCard(CitationStyle.BLOCK, 'Block Citation', styleCardsContainer, true);
+        const inlineCard = this.createCitationStyleCard(CitationStyle.INLINE, 'Inline Citation', styleCardsContainer, false);
+
+        // Inline Style Options (hidden by default)
+        const inlineStyleContainer = contentEl.createDiv();
+        inlineStyleContainer.style.marginTop = '10px';
+        inlineStyleContainer.style.display = 'none';
+        inlineStyleContainer.createEl('h4', { text: 'Quote Style' });
+
+        // Inline Style Cards Container
+        const inlineStyleCardsContainer = inlineStyleContainer.createDiv();
+        inlineStyleCardsContainer.style.display = 'flex';
+        inlineStyleCardsContainer.style.gap = '10px';
+        inlineStyleCardsContainer.style.marginTop = '10px';
+
+        // Create inline style cards
+        const quotesCard = this.createInlineStyleCard(InlineQuoteStyle.ENGLISH, 'English ("...")', inlineStyleCardsContainer, true);
+        const guillemetsCard = this.createInlineStyleCard(InlineQuoteStyle.FRENCH, 'French (« ... »)', inlineStyleCardsContainer, false);
+
+        // Store reference for showing/hiding
+        blockCard.addEventListener('click', () => {
+            inlineStyleContainer.style.display = 'none';
+        });
+
+        inlineCard.addEventListener('click', () => {
+            inlineStyleContainer.style.display = 'block';
+        });
+
+        contentEl.appendChild(inlineStyleContainer);
+
+        // Submit button
+        const submitButton = this.createSubmitButton();
+        submitButton.onclick = () => {
+            const reference = inputEl.value.trim();
+            if (!reference) {
+                new Notice('Please enter a Bible reference');
+                return;
+            }
+            
+            const citation = this.formatCitation(reference);
+            this.submitted = true;
+            this.resolve(citation);
+            this.close();
+        };
+
+        // Keyboard shortcut (Enter) - only submit if suggestions are not visible
+        inputEl.addEventListener("keypress", (event) => {
+            if (event.key === "Enter") {
+                // Only submit if suggestions are not visible or no suggestion is selected
+                if (!this.suggestionContainer ||
+                    this.suggestionContainer.style.display === 'none' ||
+                    this.selectedSuggestionIndex === -1) {
+                    submitButton.click();
+                }
+            }
+        });
+
+        // Append elements
+        contentEl.appendChild(submitButton);
+    }
+
+    private styleInputField(inputEl: HTMLInputElement) {
+        inputEl.style.padding = "8px";
+        inputEl.style.marginBottom = "10px";
+        inputEl.style.width = "100%";
+        inputEl.style.border = "1px solid #ccc";
+        inputEl.style.borderRadius = "4px";
+        inputEl.style.boxSizing = "border-box";
+        inputEl.style.height = "40px";
+        inputEl.focus();
+    }
+
+    private createCitationStyleCard(style: CitationStyle, label: string, container: HTMLElement, selected: boolean): HTMLElement {
+        const card = container.createDiv({ cls: 'citation-style-card' });
+        card.setText(label);
+        card.style.padding = '15px 25px';
+        card.style.border = '1px solid #ccc';
+        card.style.borderRadius = '4px';
+        card.style.cursor = 'pointer';
+        card.style.backgroundColor = selected ? '#3a7bfd' : '#fff';
+        card.style.color = selected ? '#fff' : '#000';
+
+        card.addEventListener('click', () => {
+            container.findAll('.citation-style-card').forEach(c => {
+                c.style.backgroundColor = '#fff';
+                c.style.color = '#000';
+            });
+            card.style.backgroundColor = '#3a7bfd';
+            card.style.color = '#fff';
+            this.citationStyle = style;
+        });
+
+        return card;
+    }
+
+    private createInlineStyleCard(style: InlineQuoteStyle, label: string, container: HTMLElement, selected: boolean): HTMLElement {
+        const card = container.createDiv({ cls: 'inline-style-card' });
+        card.setText(label);
+        card.style.padding = '15px 25px';
+        card.style.border = '1px solid #ccc';
+        card.style.borderRadius = '4px';
+        card.style.cursor = 'pointer';
+        card.style.backgroundColor = selected ? '#3a7bfd' : '#fff';
+        card.style.color = selected ? '#fff' : '#000';
+
+        card.addEventListener('click', () => {
+            container.findAll('.inline-style-card').forEach(c => {
+                c.style.backgroundColor = '#fff';
+                c.style.color = '#000';
+            });
+            card.style.backgroundColor = '#3a7bfd';
+            card.style.color = '#fff';
+            this.inlineStyle = style;
+        });
+
+        return card;
+    }
+
+    private createRadioOption(
+        container: HTMLElement, 
+        name: string, 
+        value: CitationStyle | InlineQuoteStyle, 
+        label: string, 
+        checked = false
+    ): HTMLInputElement {
+        const wrapper = container.createDiv();
+        wrapper.style.marginBottom = '8px';
+
+        const radio = wrapper.createEl('input', {
+            type: 'radio',
+            attr: { name, value, checked }
+        });
+        radio.style.marginRight = '8px';
+
+        wrapper.createEl('label', { text: label });
+
+        return radio;
+    }
+
+    private createSubmitButton(): HTMLButtonElement {
+        const submitButton = createEl("button", { text: "Submit" });
+        submitButton.style.marginTop = "12px";
+        submitButton.style.padding = "8px 16px";
+        submitButton.style.backgroundColor = "#3a7bfd";
+        submitButton.style.color = "#fff";
+        submitButton.style.border = "none";
+        submitButton.style.borderRadius = "4px";
+        submitButton.style.cursor = "pointer";
+
+        submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
+        submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
+
+        return submitButton;
+    }
+
+    private formatCitation(reference: string): BibleCitation {
+
+        const version = (this.versionPicker?.getValue() ?? this.selectedVersion) as BibleVersion;
+        let fullText: string = `${reference}||${version}`;
+
+        return {
+            reference,
+            version,
+            style: this.citationStyle,
+            inlineStyle: this.citationStyle === CitationStyle.INLINE ? this.inlineStyle : undefined,
+            fullText,// Always "reference||version" format
+        };
+    }
+
+    private handleInputChange(inputEl: HTMLInputElement): void {
+        const inputValue = inputEl.value.trim().toLowerCase();
+
+        if (!this.suggestionContainer) return;
+
+        // Clear previous suggestions
+        this.suggestionContainer.empty();
+        this.selectedSuggestionIndex = -1;
+
+        // If input is empty, hide suggestions
+        if (!inputValue) {
+            this.suggestionContainer.style.display = 'none';
+            return;
+        }
+
+        // Filter citations that match the input
+        const filteredCitations = this.existingCitations.filter(citation =>
+            citation.toLowerCase().includes(inputValue)
+        );
+
+        // If no matches, hide suggestions
+        if (filteredCitations.length === 0) {
+            this.suggestionContainer.style.display = 'none';
+            return;
+        }
+
+        // Display filtered suggestions (limit to 10 for performance)
+        const limitedCitations = filteredCitations.slice(0, 10);
+        limitedCitations.forEach((citation, index) => {
+            const suggestionItem = this.suggestionContainer!.createDiv();
+            suggestionItem.setText(citation);
+            suggestionItem.style.padding = '8px 12px';
+            suggestionItem.style.cursor = 'pointer';
+            suggestionItem.style.borderBottom = '1px solid var(--background-modifier-border)';
+
+            // Hover effect
+            suggestionItem.addEventListener('mouseenter', () => {
+                suggestionItem.style.backgroundColor = 'var(--background-modifier-hover)';
+            });
+            suggestionItem.addEventListener('mouseleave', () => {
+                if (index !== this.selectedSuggestionIndex) {
+                    suggestionItem.style.backgroundColor = 'transparent';
+                }
+            });
+
+            // Click handler
+            suggestionItem.addEventListener('click', () => {
+                inputEl.value = citation;
+                this.suggestionContainer!.style.display = 'none';
+                inputEl.focus();
+            });
+
+            // Store reference for keyboard navigation
+            suggestionItem.setAttribute('data-index', index.toString());
+        });
+
+        this.suggestionContainer.style.display = 'block';
+    }
+
+    private handleKeyNavigation(event: KeyboardEvent, inputEl: HTMLInputElement): void {
+        if (!this.suggestionContainer || this.suggestionContainer.style.display === 'none') {
+            return;
+        }
+
+        const suggestions = this.suggestionContainer.querySelectorAll('div');
+        const suggestionsCount = suggestions.length;
+
+        if (suggestionsCount === 0) return;
+
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                this.selectedSuggestionIndex = (this.selectedSuggestionIndex + 1) % suggestionsCount;
+                this.updateSuggestionSelection(suggestions);
+                break;
+
+            case 'ArrowUp':
+                event.preventDefault();
+                this.selectedSuggestionIndex = (this.selectedSuggestionIndex - 1 + suggestionsCount) % suggestionsCount;
+                this.updateSuggestionSelection(suggestions);
+                break;
+
+            case 'Enter':
+                if (this.selectedSuggestionIndex >= 0) {
+                    event.preventDefault();
+                    const selectedSuggestion = suggestions[this.selectedSuggestionIndex];
+                    inputEl.value = selectedSuggestion.getText();
+                    this.suggestionContainer.style.display = 'none';
+                    this.selectedSuggestionIndex = -1;
+                }
+                break;
+
+            case 'Escape':
+                event.preventDefault();
+                this.suggestionContainer.style.display = 'none';
+                this.selectedSuggestionIndex = -1;
+                break;
+        }
+    }
+
+    private updateSuggestionSelection(suggestions: NodeListOf<Element>): void {
+        suggestions.forEach((suggestion, index) => {
+            const htmlSuggestion = suggestion as HTMLElement;
+            if (index === this.selectedSuggestionIndex) {
+                htmlSuggestion.style.backgroundColor = 'var(--background-modifier-hover)';
+                htmlSuggestion.scrollIntoView({ block: 'nearest' });
+            } else {
+                htmlSuggestion.style.backgroundColor = 'transparent';
+            }
+        });
+    }
+
+    onClose() {
+        // Resolve the pending promise when the window is dismissed without submitting
+        if (!this.submitted) this.resolve(null);
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
+
+
+
 class TranslationModal extends Modal {
+	private bibleVersions = ['LSG10', 'ESV', 'KJV'];
+
 	private result: {
 		service: TranslationService;
 		targetLang: string;
 		customPrompt?: string;
 		model?: TranslationModel;
+		bibleVersion:string;
 	};
 
 	private onSubmit: (result: {
 		service: TranslationService;
 		targetLang: string;
 		customPrompt?: string;
-		openAIModel?: TranslationModel;
+		model?: TranslationModel;
+		bibleVersion:string;
+
 	}) => void;
 
 	constructor(app: App, onSubmit: (result: {
+		bibleVersion: string;
 		service: TranslationService;
 		targetLang: string;
 		customPrompt?: string;
-		iaModel?: TranslationModel;
+		model?: TranslationModel;
 	}) => void,
 		private savedPrompts: string[] = [] // pass from plugin
 
@@ -255,6 +616,36 @@ class TranslationModal extends Modal {
 		createFormGroup('Target Language', langInput.inputEl);
 
 
+		// Bible version checkbox and dropdown
+		const bibleVersionCheckbox = contentEl.createEl('input', {
+			type: 'checkbox'
+		});
+		bibleVersionCheckbox.setAttr('style', 'margin-right: 8px;');
+
+		const bibleVersionLabel = contentEl.createDiv();
+		bibleVersionLabel.setAttr('style', 'display: flex; align-items: center; margin-bottom: 8px;');
+		bibleVersionLabel.appendChild(bibleVersionCheckbox);
+		bibleVersionLabel.createEl('span', { text: 'Include Bible Version' });
+
+		contentEl.appendChild(bibleVersionLabel);
+
+		// Bible version dropdown (hidden by default)
+		const bibleVersionSelect = contentEl.createEl('select', {
+			attr: { style: 'padding: 6px; font-size: 14px; width: 100%; margin-bottom: 16px;' }
+		});
+		this.bibleVersions.forEach(version => {
+			bibleVersionSelect.createEl('option', { text: version, value: version });
+		});
+		bibleVersionSelect.style.display = 'none';
+		contentEl.appendChild(bibleVersionSelect);
+
+		// Toggle visibility on checkbox change
+		bibleVersionCheckbox.addEventListener('change', () => {
+			bibleVersionSelect.style.display = bibleVersionCheckbox.checked ? 'block' : 'none';
+		});
+
+
+
 		// Prompt selector
 		contentEl.createEl('label', { text: 'Choose Saved Prompt' });
 		const promptSelect = contentEl.createEl('select');
@@ -319,7 +710,8 @@ class TranslationModal extends Modal {
 					service,
 					targetLang,
 					customPrompt: promptInput.getValue(),
-					model: modelsByService[service].length > 0 ? model : undefined
+					model: modelsByService[service].length > 0 ? model : undefined,
+					bibleVersion: bibleVersionCheckbox.checked ? bibleVersionSelect.value : ""
 				};
 				this.onSubmit(this.result);
 				this.close();

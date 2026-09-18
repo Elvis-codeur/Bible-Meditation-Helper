@@ -53,27 +53,3 @@
     font-size: 16px;
     color: #333;
 }
-
-/* Bible version picker (buttons instead of a dropdown) */
-.bmh-version-picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 12px 0;
-    position: relative;
-}
-
-.bmh-version-button {
-    flex: 1 1 auto;
-}
-
-.bmh-modal-description {
-    font-style: italic;
-    color: var(--text-muted);
-    margin-bottom: 12px;
-}
-
-.bmh-citation-input {
-    width: 100%;
-    margin-bottom: 8px;
-}

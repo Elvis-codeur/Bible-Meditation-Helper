@@ -1,4 +1,7 @@
 // helpers/chunkText.ts
+import levenshtein from "js-levenshtein";
+
+
 
 /**
  * Roughly estimate the number of tokens in a given string.
@@ -45,4 +48,22 @@ export function chunkTextByTokens(
   }
 
   return chunks;
+}
+
+
+
+export function findClosestBookName(input: string,bibleBooks:string[]): string | null {
+  let minDistance = Infinity;
+  let closestMatch = null;
+
+  for (const book of bibleBooks) {
+    const distance = levenshtein(input.toLowerCase(), book.toLowerCase());
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestMatch = book;
+    }
+  }
+
+  // Set a threshold to avoid false positives
+  return minDistance <= 3 ? closestMatch : null;
 }
