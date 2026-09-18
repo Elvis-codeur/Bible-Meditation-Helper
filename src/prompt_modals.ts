@@ -1,252 +1,146 @@
 import { App, Modal, Notice, TextAreaComponent, TextComponent } from "obsidian";
 import { TranslationModel, TranslationService } from "./type_definitions";
 
-class BibleCitationVersionChangePromptModal extends Modal {
-	private resolve: (value: string | null) => void;
+const BIBLE_VERSIONS = ["ESV", "KJV", "LSG10"];
 
-	constructor(app: App, resolve: (value: string | null) => void) {
+/** Lets the modals read and store the version the user prefers (double click on a version). */
+interface PreferredVersionStore {
+	get: () => string | undefined;
+	set: (version: string) => void | Promise<void>;
+}
+
+/**
+ * Render the Bible versions as a row of buttons (no dropdown, so nothing can cover them).
+ * A click selects a version, a double click also makes it the preferred one.
+ */
+function renderVersionPicker(container: HTMLElement, store?: PreferredVersionStore) {
+	let selected = store?.get() && BIBLE_VERSIONS.includes(store.get() as string) ? store.get() as string : BIBLE_VERSIONS[0];
+	const picker = container.createDiv({ cls: "bmh-version-picker" });
+	const buttons = new Map<string, HTMLButtonElement>();
+
+	const refresh = () => {
+		buttons.forEach((button, version) => {
+			button.toggleClass("mod-cta", version === selected);
+			button.setText(version === store?.get() ? `★ ${version}` : version);
+		});
+	};
+
+	BIBLE_VERSIONS.forEach(version => {
+		const button = picker.createEl("button", { text: version, cls: "bmh-version-button" });
+		button.title = "Click to select, double click to make it your preferred version";
+		button.onclick = () => { selected = version; refresh(); };
+		button.ondblclick = async () => {
+			selected = version;
+			if (store) {
+				await store.set(version);
+				new Notice(`${version} is now your preferred Bible version`);
+			}
+			refresh();
+		};
+		buttons.set(version, button);
+	});
+	refresh();
+
+	return { getValue: () => selected };
+}
+
+function styleSubmit(button: HTMLButtonElement) {
+	button.addClass("mod-cta");
+	button.style.marginTop = "12px";
+}
+
+class BibleCitationVersionChangePromptModal extends Modal {
+	constructor(app: App, private resolve: (value: string | null) => void, private store?: PreferredVersionStore) {
 		super(app);
-		this.resolve = resolve;
 	}
 
 	onOpen() {
 		const { contentEl } = this;
+		contentEl.createEl("h2", { text: "Change the version of your Bible citations" });
+		contentEl.createEl("p", {
+			text: "Choose the Bible version to which you want to convert your Bible citations (double click to set your preferred version)"
+		}).addClass("bmh-modal-description");
 
-		// Title
-		contentEl.createEl("h2", { text: "Enter the new Bible version : Change the version of your Bible citations in the text"  });
-
-		// Description
-		const description = contentEl.createEl("p", {
-			text: "Choose the bible version to which you want convert your bible citations"
-		});
-		description.style.marginBottom = "50px";
-		description.style.fontStyle = "italic";
-		description.style.color = "#667";
-		description.style.fontSize = "25px";
-		description.style.height = "30px";
-
-		// Select element
-		const selectEl = contentEl.createEl("select");
-		selectEl.style.padding = "8px";
-		selectEl.style.margin = "10px 0";
-		selectEl.style.width = "100%";
-		selectEl.style.border = "1px solid #ccc";
-		selectEl.style.borderRadius = "4px";
-		selectEl.style.height = "70px";
-		selectEl.style.boxSizing = "border-box";
-
-		const versions = ["ESV", "KJV", "LSG10"];
-		versions.forEach(version => {
-			const optionEl = selectEl.createEl("option", { text: version });
-			optionEl.value = version;
-			selectEl.appendChild(optionEl);
-		});
-
-		// Submit button
+		const picker = renderVersionPicker(contentEl, this.store);
 		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		submitButton.style.marginTop = "12px";
-		submitButton.style.padding = "8px 16px";
-		submitButton.style.backgroundColor = "#3a7bfd";
-		submitButton.style.color = "#fff";
-		submitButton.style.border = "none";
-		submitButton.style.borderRadius = "4px";
-		submitButton.style.cursor = "pointer";
-
-		submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
-		submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
-
-		// Submit logic
+		styleSubmit(submitButton);
 		submitButton.onclick = () => {
-			const bibleVersion = selectEl.value.trim();
-			this.resolve(bibleVersion || null);
+			this.resolve(picker.getValue() || null);
 			this.close();
 		};
-
-		// Append elements to panel
-		contentEl.appendChild(selectEl);
-		contentEl.appendChild(submitButton);
-
-
 	}
-
 
 	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+		this.contentEl.empty();
 	}
 }
-
-
-
 
 class BibleCitationChangePlainTextCitation extends Modal {
-	private resolve: (value: string | null) => void;
-
-	constructor(app: App, resolve: (value: string | null) => void) {
+	constructor(app: App, private resolve: (value: string | null) => void, private store?: PreferredVersionStore) {
 		super(app);
-		this.resolve = resolve;
 	}
 
 	onOpen() {
 		const { contentEl } = this;
+		contentEl.createEl("h2", { text: "Convert plain citations" });
+		contentEl.createEl("p", {
+			text: "Choose the Bible version in which you want your plain citations to be cited (double click to set your preferred version)"
+		}).addClass("bmh-modal-description");
 
-		// Title
-		contentEl.createEl("h2", { text: "Enter the Bible version to which you want your plain citations to be cited in" });
-
-		// Description
-		const description = contentEl.createEl("p", {
-			text: "Choose the bible version in which you want your plain citations to be cited in"
-		});
-		description.style.marginBottom = "50px";
-		description.style.fontStyle = "italic";
-		description.style.color = "#667";
-		description.style.fontSize = "15px";
-
-		// Select element
-		const selectEl = contentEl.createEl("select");
-		selectEl.style.padding = "8px";
-		selectEl.style.margin = "10px 0";
-		selectEl.style.width = "100%";
-		selectEl.style.border = "1px solid #ccc";
-		selectEl.style.borderRadius = "4px";
-		selectEl.style.height = "100px";
-		selectEl.style.boxSizing = "border-box";
-
-		const versions = ["ESV", "KJV", "LSG10"];
-		versions.forEach(version => {
-			const optionEl = selectEl.createEl("option", { text: version });
-			optionEl.value = version;
-			selectEl.appendChild(optionEl);
-		});
-
-		// Submit button
+		const picker = renderVersionPicker(contentEl, this.store);
 		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		submitButton.style.marginTop = "12px";
-		submitButton.style.padding = "8px 16px";
-		submitButton.style.backgroundColor = "#3a7bfd";
-		submitButton.style.color = "#fff";
-		submitButton.style.border = "none";
-		submitButton.style.borderRadius = "4px";
-		submitButton.style.cursor = "pointer";
-
-		submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
-		submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
-
-		// Submit logic
+		styleSubmit(submitButton);
 		submitButton.onclick = () => {
-			const bibleVersion = selectEl.value.trim();
-			this.resolve(bibleVersion || null);
+			this.resolve(picker.getValue() || null);
 			this.close();
 		};
-
-		// Append elements to panel
-		contentEl.appendChild(selectEl);
-		contentEl.appendChild(submitButton);
-
-
 	}
 
-
 	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+		this.contentEl.empty();
 	}
 }
 
-
 class BibleCitationPromptModal extends Modal {
-	private resolve: (value: string | null) => void;
+	private submitted = false;
 
-	constructor(app: App, resolve: (value: string | null) => void) {
+	constructor(app: App, private resolve: (value: string | null) => void, private store?: PreferredVersionStore) {
 		super(app);
-		this.resolve = resolve;
 	}
 
 	onOpen() {
-
 		const { contentEl } = this;
-
-		// Title
 		contentEl.createEl("h2", { text: "Enter Bible Citation" });
+		contentEl.createEl("p", {
+			text: "Enter a Bible verse (e.g. John 3:16, John 3:16-18 or John 3:16,18,20–22) and choose a version (double click to set your preferred version).",
+		}).addClass("bmh-modal-description");
 
-		// Description
-		const description = contentEl.createEl("p", {
-			text: "Please enter a Bible verse (e.g., John 3:16) and choose a version.",
-		});
-		description.style.marginBottom = "12px";
-		description.style.fontStyle = "italic";
-		description.style.color = "#667";
-
-		// Input element
-		const inputEl = contentEl.createEl("input", { type: "text", placeholder: "e.g. John 3:16" });
-		inputEl.style.padding = "8px";
-		inputEl.style.marginBottom = "10px";
-		inputEl.style.width = "100%";
-		inputEl.style.border = "1px solid #ccc";
-		inputEl.style.borderRadius = "4px";
-		inputEl.style.boxSizing = "border-box";
-		inputEl.style.height = "70px"
+		const inputEl = contentEl.createEl("input", { type: "text", placeholder: "e.g. John 3:16", cls: "bmh-citation-input" });
 		inputEl.focus();
 
-		// Select element
-		const selectEl = contentEl.createEl("select");
-		selectEl.style.padding = "6px";
-		selectEl.style.margin = "10px 0";
-		selectEl.style.border = "1px solid #ccc";
-		selectEl.style.borderRadius = "4px";
-		selectEl.style.width = "100%";
-
-		const versions = ["ESV", "KJV", "LSG10"];
-		versions.forEach(version => {
-			const optionEl = selectEl.createEl("option", { text: version });
-			optionEl.value = version;
-			selectEl.appendChild(optionEl);
-		});
-
-		// Submit button
+		const picker = renderVersionPicker(contentEl, this.store);
 		const submitButton = contentEl.createEl("button", { text: "Submit" });
-		submitButton.style.marginTop = "12px";
-		submitButton.style.padding = "8px 16px";
-		submitButton.style.backgroundColor = "#3a7bfd";
-		submitButton.style.color = "#fff";
-		submitButton.style.border = "none";
-		submitButton.style.borderRadius = "4px";
-		submitButton.style.cursor = "pointer";
+		styleSubmit(submitButton);
 
-		submitButton.onmouseenter = () => submitButton.style.backgroundColor = "#245edb";
-		submitButton.onmouseleave = () => submitButton.style.backgroundColor = "#3a7bfd";
-
-		// Keyboard shortcut (Enter)
-		inputEl.addEventListener("keypress", (event) => {
+		inputEl.addEventListener("keydown", (event) => {
 			if (event.key === "Enter") {
 				submitButton.click();
 			}
 		});
 
-		// Submit logic
 		submitButton.onclick = () => {
-			const citation = inputEl.value.trim() + "||" + selectEl.value.trim();
-			this.resolve(citation || null);
+			this.submitted = true;
+			this.resolve(inputEl.value.trim() + "||" + picker.getValue());
 			this.close();
 		};
-
-		// Append elements to panel
-		contentEl.appendChild(inputEl);
-		contentEl.appendChild(selectEl);
-		contentEl.appendChild(submitButton);
-
-
 	}
-
 
 	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+		// Resolve the pending promise when the modal is dismissed without submitting
+		if (!this.submitted) this.resolve(null);
+		this.contentEl.empty();
 	}
 }
-
-
-
 
 class TranslationModal extends Modal {
 	private result: {

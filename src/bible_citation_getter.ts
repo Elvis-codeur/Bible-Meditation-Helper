@@ -10,6 +10,67 @@ function isInteger(str: string) {
     return !isNaN(parseInt(str))
 }
 
+
+export interface VerseRange {
+    start: number;
+    /** null means "up to the end of the chapter" (e.g. "16-") */
+    end: number | null;
+}
+
+export interface ParsedCitation {
+    bookAndChapter: string;
+    book: string;
+    chapter: string;
+    ranges: VerseRange[];
+}
+
+/**
+ * Parse a reference such as "John 3:16", "John 3:16-18", "John 3:16,18,20–22" or "John 3:16-".
+ * Ranges can be separated with "-" or "–" (en dash), verses with ",".
+ * A reference without verses ("John 3") designates the whole chapter.
+ */
+export function parseCitationReference(reference: string): ParsedCitation {
+    const compact = reference.toLowerCase().replace(/\s+/g, "");
+    const colon = compact.indexOf(":");
+    const bookAndChapter = colon === -1 ? compact : compact.slice(0, colon);
+    const versesPart = colon === -1 ? "1-" : compact.slice(colon + 1);
+
+    let book = "";
+    let chapter = "";
+    for (let i = 1; i < bookAndChapter.length; i++) { // i starts at 1 because of 1 John, 1 Samuel, etc
+        if (isInteger(bookAndChapter[i])) {
+            book = bookAndChapter.substring(0, i);
+            chapter = bookAndChapter.substring(i);
+            break;
+        }
+    }
+    if (!book || !chapter) {
+        throw new Error(`Invalid Bible citation: "${reference}"`);
+    }
+
+    const ranges: VerseRange[] = [];
+    for (const part of versesPart.split(",")) {
+        if (part === "") continue;
+        const [inf, sup] = part.split(/[-\u2013\u2014]/);
+        const start = parseInt(inf);
+        if (isNaN(start)) {
+            throw new Error(`Invalid verse "${part}" in citation "${reference}"`);
+        }
+        if (sup === undefined) {
+            ranges.push({ start, end: start });
+        } else if (sup === "") {
+            ranges.push({ start, end: null });
+        } else {
+            ranges.push({ start, end: parseInt(sup) });
+        }
+    }
+    if (ranges.length === 0) {
+        throw new Error(`No verse found in citation "${reference}"`);
+    }
+
+    return { bookAndChapter, book, chapter, ranges };
+}
+
 export default class BibleCitationGetter {
     vault: any;
     app: any;
@@ -36,107 +97,53 @@ export default class BibleCitationGetter {
 
 
         // Parse the citation
-        // Remove all sapce to facilitate parsing 
-        let citation = text.split("||")[0].replace(" ", "").toLowerCase().replace("\n", "").replace("\r", "").split(":");
-        let book_and_chapter = citation[0];
-
-        let book = "";
-        let chapter = "";
-
-        for (let i = 0; i < book_and_chapter.length; i++) {
-            if (isInteger(book_and_chapter[i]) && i != 0) { // Check because of 1 John, 1 Samuel, etc
-                book = book_and_chapter.substring(0, i);
-                chapter = book_and_chapter.substring(i, book_and_chapter.length);
-                break
-            }
-        }
-
-        let verse_indice_inf = citation[1].split("-")[0];
-        let verse_indice_sup = citation[1].split("-").length > 1 ? citation[1].split("-")[1] : "";
-
-
-        //console.log("Book: " + book);
-        //console.log("Chapter: " + chapter);
-        //console.log("Verse inf: " + verse_indice_inf);
-        //console.log("Verse sup: " + verse_indice_sup);
+        const parsed = parseCitationReference(text.split("||")[0]);
+        const book_and_chapter = parsed.bookAndChapter;
+        const chapter = parsed.chapter;
+        let book = parsed.book;
 
         book = this.mapbookToBookNameInFolder(book);
         book = this.mapBookToOrder(book) + "_" + book;
 
-
         // Read the chapter containing the citation
-
         let result = await this.readCitationOnDrive(book.replace(" ", ""), parseInt(chapter),
-            parseInt(verse_indice_inf),
-            parseInt(verse_indice_sup), bible_version);
+            parsed.ranges[0].start,
+            parsed.ranges[0].end ?? 0, bible_version);
 
-
-        // Create the citation and put it in a div 
+        // Create the citation and put it in a div
         let chapter_verses = (await result.result).split("\n");
 
-        // To remove the chapter definition line 
+        // To remove the chapter definition line
         chapter_verses = chapter_verses.slice(1)
-
         chapter_verses = this.splitTextByNumberedPattern(chapter_verses.join("\n"));
 
-
-        let citation_indice_begin = parseInt(verse_indice_inf);
-        let citation_indice_end = 0;
-
-        console.log(book_and_chapter);
-
-        if (verse_indice_sup == "") {
-            if (citation[1].trim().at(-1) == "-") {
-                citation_indice_end = chapter_verses.length;
-            }
-            else {
-                citation_indice_end = citation_indice_begin;
-            }
-        }
-        else {
-            citation_indice_end = parseInt(verse_indice_sup);
-
-        }
-
-        console.log("Citation begin: " + citation_indice_begin);
-        console.log("Citation end: " + citation_indice_end);
-
-        console.log("Bible version: " + bible_version);
+        // An open ended range (e.g. 16-) goes up to the last verse of the chapter
+        const ranges = parsed.ranges.map(r => ({ start: r.start, end: r.end ?? Number.MAX_SAFE_INTEGER }));
 
         let verses_list = [];
-
-        console.log(chapter_verses);
-
 
         for (let compteur = 0; compteur < chapter_verses.length; compteur++) {
             let line = chapter_verses[compteur];
 
-            let verse_number = 0;
-            if (line.contains(".")) {
-                // Take the number of the verse at the begening of the verse 
-                verse_number = parseInt(line.slice(0, line.indexOf(".")));
+            if (line.includes(".")) {
+                // Take the number of the verse at the begening of the verse
+                const verse_number = parseInt(line.slice(0, line.indexOf(".")));
 
-                if (verse_number >= citation_indice_begin && verse_number <= citation_indice_end) {
+                if (ranges.some(r => verse_number >= r.start && verse_number <= r.end)) {
                     verses_list.push(
                         {
                             number: verse_number,
-                            text: line.slice(line.indexOf(".") + 1, -1).trimEnd() // I add 1 to avoid the .
+                            text: line.slice(line.indexOf(".") + 1).trim() // I add 1 to avoid the .
                         }
                     )
-
                 }
             }
-
         }
 
-
-        //const verses = this.splitVersesFromMarkdown(markdownText);
-        //console.log(verses);
-
         // The name of the citation file without its extension
-        let citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, citation_indice_begin, citation_indice_end);
+        let citationFileNameWithoutExt = this.prepare_book_and_chapter_for_citation(book_and_chapter, parsed.ranges);
 
-        if (citationFileNameWithoutExt.toLowerCase().contains("revelation_of_john")) {
+        if (citationFileNameWithoutExt.toLowerCase().includes("revelation_of_john")) {
             citationFileNameWithoutExt = citationFileNameWithoutExt.replace("Revelation_of_John", "Revelation")
         }
 
@@ -149,33 +156,7 @@ export default class BibleCitationGetter {
                 return `>**${value.number}** ${value.text}\n`
             }).join("");
 
-        // const divContent = `<div class="bible-citation">
-
-        //     <div>
-
-        //     <div class = "scripture_quoted" >${this.prepare_book_and_chapter_for_citation(book_and_chapter,citation_indice_begin,citation_indice_end)} </div>
-
-        //     <div class="bible_version_section_div">
-        //         <label for="myDropdown">Choose an option:</label>
-        // 		<select id="select_bible_version_dropdown">
-        // 			<option value="option1">ESV</option>
-        // 			<option value="option2">KJV</option>
-        // 			<option value="option3">LSG10</option>
-        // 		</select>
-
-        //     </div>
-
-        //     </div>
-
-        //     <div class="citation-content">${verses_list.map((value) => {
-        //     return `<div><p> <b> ${value.number} </b> ${value.text} </p></div>`
-        // }).join("")}</div>
-        // </div>`;
-
-
         return { citation: divContent, result: result };
-
-
     }
 
 
@@ -220,8 +201,7 @@ export default class BibleCitationGetter {
 
 
     prepare_book_and_chapter_for_citation(book_and_chapter: string,
-        verse_indice_inf: number,
-        verse_indice_sup: number) {
+        ranges: VerseRange[]) {
 
         // Prepare the name of the book 
         let result = "";
@@ -260,14 +240,11 @@ export default class BibleCitationGetter {
             }
         }
 
-        // Cas de citation d'un seul verset
-        if (verse_indice_inf == verse_indice_sup) {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter}:${verse_indice_inf}`;
-        }
-        else {
-            return `${this.mapbookToBookNameInFolder(book)} ${chapter}:${verse_indice_inf}-${verse_indice_sup}`;
-        }
+        const verses = ranges.map(r =>
+            r.end === null ? `${r.start}-` : (r.end === r.start ? `${r.start}` : `${r.start}-${r.end}`)
+        ).join(",");
 
+        return `${this.mapbookToBookNameInFolder(book)} ${chapter}:${verses}`;
     }
 
     convert_number_to_string(number: number): string {
@@ -314,7 +291,7 @@ export default class BibleCitationGetter {
 
     // Helper function to remove invalid filename characters
     sanitizeFileName(fileName: string): string {
-        return fileName.replace(/[\/*?"<>|]/g, "").replace(":", "_")
+        return fileName.replace(/[\/*?"<>|]/g, "").replace(/:/g, "_")
     }
 
     async createFileInSubfolder(folderPath: string, fileName: string, content: string = "") {
